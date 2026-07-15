@@ -1,0 +1,16 @@
+{
+  "_comment": "Deterministic windowing check. Window is 1 hour so it is exercised in seconds, not 24h. Contract: include events with (evaluate_at - window_seconds) < event_time <= evaluate_at.",
+  "window_seconds": 3600,
+  "evaluate_at": "2026-01-01T00:50:00Z",
+  "events": [
+    {"customer_id": "CUST0001", "amount": 999.0, "timestamp": "2025-12-31T23:00:00Z"},
+    {"customer_id": "CUST0001", "amount": 100.0, "timestamp": "2026-01-01T00:00:00Z"},
+    {"customer_id": "CUST0001", "amount": 200.0, "timestamp": "2026-01-01T00:30:00Z"},
+    {"customer_id": "CUST0001", "amount": 300.0, "timestamp": "2026-01-01T00:45:00Z"},
+    {"customer_id": "CUST0002", "amount": 50.0, "timestamp": "2026-01-01T00:40:00Z"}
+  ],
+  "expected": {
+    "CUST0001": {"transaction_count": 3, "avg_amount": 200.0},
+    "CUST0002": {"transaction_count": 1, "avg_amount": 50.0}
+  }
+}

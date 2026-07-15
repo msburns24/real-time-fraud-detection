@@ -1,0 +1,43 @@
+# Blue-green demo WITHOUT Kubernetes: two API versions behind nginx.
+#   nginx  -> http://localhost:8080   (the stable endpoint clients use)
+#   blue   -> http://localhost:8001   (direct, for health checks)
+#   green  -> http://localhost:8002   (direct, for health checks)
+#
+# Run from the repo root:
+#   docker compose -f deployment/docker-compose.blue-green.yml up --build
+#   ./deployment/switch_traffic.sh        # flip blue <-> green (zero downtime)
+services:
+  redis:
+    image: redis:7-alpine
+
+  api-blue:
+    build: ..
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - REDIS_HOST=redis
+      - MODEL_PATH=models/fraud_model_v1.pkl
+    ports:
+      - "8001:8000"
+    depends_on:
+      - redis
+
+  api-green:
+    build: ..
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - REDIS_HOST=redis
+      - MODEL_PATH=models/fraud_model_v1.pkl
+    ports:
+      - "8002:8000"
+    depends_on:
+      - redis
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-blue
+      - api-green

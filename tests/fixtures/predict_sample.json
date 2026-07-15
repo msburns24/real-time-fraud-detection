@@ -1,0 +1,17 @@
+{
+  "valid": {
+    "transaction_id": "txn-abc-001",
+    "customer_id": "CUST0001",
+    "amount": 1500.0,
+    "merchant_category": "online_retail",
+    "is_online": true,
+    "timestamp": "2026-01-01T00:50:00Z"
+  },
+  "missing_amount": {
+    "transaction_id": "txn-abc-002",
+    "customer_id": "CUST0001",
+    "merchant_category": "grocery",
+    "is_online": false,
+    "timestamp": "2026-01-01T00:51:00Z"
+  }
+}
