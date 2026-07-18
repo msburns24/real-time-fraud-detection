@@ -26,15 +26,31 @@ if [ "$ok" -ne 1 ]; then
 fi
 
 # 2. Flip the active/standby server lines in nginx.conf
+cp "$CONF" "${CONF}.bak"
 if [ "$target" = "green" ]; then
-  sed -i.bak -E \
+  sed -E \
     -e 's|^([[:space:]]*)server api-blue:8000;|\1# server api-blue:8000;|' \
-    -e 's|^([[:space:]]*)# server api-green:8000;|\1server api-green:8000;|' "$CONF"
+    -e 's|^([[:space:]]*)# server api-green:8000;|\1server api-green:8000;|' \
+    "${CONF}.bak" > "${CONF}.tmp"
 else
-  sed -i.bak -E \
+  sed -E \
     -e 's|^([[:space:]]*)server api-green:8000;|\1# server api-green:8000;|' \
-    -e 's|^([[:space:]]*)# server api-blue:8000;|\1server api-blue:8000;|' "$CONF"
+    -e 's|^([[:space:]]*)# server api-blue:8000;|\1server api-blue:8000;|' \
+    "${CONF}.bak" > "${CONF}.tmp"
 fi
+
+# Rewrite the ORIGINAL inode instead of replacing it.
+#
+# The previous version used `sed -i`, which writes a temp file and renames it
+# over the target — creating a NEW inode. docker-compose.blue-green.yml mounts
+# a single FILE (./nginx/nginx.conf), and a single-file bind mount is bound to
+# the inode, so the rename silently detached the container's view: nginx kept
+# reading the pre-switch config forever while this script reported success and
+# `nginx -s reload` dutifully reloaded stale content. Traffic never switched.
+#
+# `cat > "$CONF"` truncates and rewrites the existing inode, so the mount holds.
+cat "${CONF}.tmp" > "$CONF"
+rm -f "${CONF}.tmp"
 
 # 3. Reload nginx (drains in-flight requests, no dropped connections)
 $COMPOSE exec -T nginx nginx -s reload
