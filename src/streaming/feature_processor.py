@@ -16,11 +16,12 @@ Contract (tests/test_streaming.py depends on this):
 from __future__ import annotations
 
 import json
-import os
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, TypeAlias
+
+from src.config import settings
 
 # ---- Type Hints --------------------------------------------------------------
 
@@ -75,9 +76,7 @@ def windowed_stats(
 class FeatureProcessor:
     def __init__(self, feature_store=None, window_seconds: int | None = None):
         self.store = feature_store
-        self.window_seconds = window_seconds or int(
-            os.getenv("FEATURE_WINDOW_SECONDS", "86400")
-        )
+        self.window_seconds = window_seconds or settings.feature_window_seconds
         # per customer: list of (event_epoch, amount)  — provided bookkeeping
         self._events: dict[CustomerID, EventsList] = defaultdict(list)
 
@@ -118,10 +117,8 @@ def run() -> None:
     from src.streaming.feature_store import FeatureStore
 
     consumer = KafkaConsumer(
-        os.getenv("KAFKA_TOPIC", "transactions"),
-        bootstrap_servers=os.getenv(
-            "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
-        ).split(","),
+        settings.kafka_topic,
+        bootstrap_servers=settings.kafka_servers,
         group_id="feature-processor",
         auto_offset_reset="earliest",
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),

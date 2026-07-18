@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 
+from src.config import settings
+
 try:
     import joblib
 except Exception:  # joblib optional at import time
@@ -19,9 +21,7 @@ except Exception:  # joblib optional at import time
 
 class FraudDetector:
     def __init__(self, model_path: str | None = None):
-        self.model_path = model_path or os.getenv(
-            "MODEL_PATH", "models/fraud_model_v1.pkl"
-        )
+        self.model_path = model_path or settings.model_path
         self.model = None
         self.model_version = "rule-based-fallback"
         self._load()
