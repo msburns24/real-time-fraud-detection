@@ -17,6 +17,22 @@ import os
 from typing import Optional
 
 import redis
+from redis import ConnectionPool
+
+_POOLS: dict[tuple[str, int, str | None], ConnectionPool] = {}
+
+
+def _get_pool(host: str, port: int, password: str | None) -> ConnectionPool:
+    """Return the shared connection pool for Redis, creating it once."""
+    target = (host, port, password)
+    if target not in _POOLS:
+        _POOLS[target] = ConnectionPool(
+            host=host,
+            port=port,
+            password=password,
+            decode_responses=True,
+        )
+    return _POOLS[target]
 
 
 class FeatureStore:
@@ -27,15 +43,13 @@ class FeatureStore:
         password: str | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
+        host = host or os.getenv("REDIS_HOST", "localhost")
+        port = port or int(os.getenv("REDIS_PORT", "6379"))
+        password = password or os.getenv("REDIS_PASSWORD") or None
         self.ttl_seconds = ttl_seconds or int(
             os.getenv("FEATURE_TTL_SECONDS", "172800")
         )
-        self.client = redis.Redis(
-            host=host or os.getenv("REDIS_HOST", "localhost"),
-            port=port or int(os.getenv("REDIS_PORT", "6379")),
-            password=password or os.getenv("REDIS_PASSWORD") or None,
-            decode_responses=True,
-        )
+        self.client = redis.Redis(connection_pool=_get_pool(host, port, password))
 
     @staticmethod
     def _key(customer_id: str) -> str:
@@ -65,7 +79,7 @@ class FeatureStore:
         """
         if not customer_ids:
             return {}
-        
+
         keys = list(map(self._key, customer_ids))
         raw_values = self.client.mget(keys)
         return {
