@@ -1,0 +1,33 @@
+[project]
+name = "src"
+version = "0.0.1"
+description = "Fraud detection system that scores transactions in real-time, within 100ms, to minimize fraud while avoiding false positives that frustrate consumers."
+authors = [{ name = "Matthew Burns" }]
+
+readme = "README.md"
+classifiers = ["Programming Language :: Python :: 3"]
+requires-python = ">=3.11"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 80
+src = ["src"]
+include = ["pyproject.toml", "src/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-sort-within-sections = false
+from-first = false
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
