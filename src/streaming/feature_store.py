@@ -13,11 +13,12 @@ setup is provided; the read/write logic is yours.
 from __future__ import annotations
 
 import json
-import os
 from typing import Optional
 
 import redis
 from redis import ConnectionPool
+
+from src.config import settings
 
 _POOLS: dict[tuple[str, int, str | None], ConnectionPool] = {}
 
@@ -31,6 +32,10 @@ def _get_pool(host: str, port: int, password: str | None) -> ConnectionPool:
             port=port,
             password=password,
             decode_responses=True,
+            # Fail fast instead of hanging if Redis is unreachable. The API's
+            # graceful-degradation path (lookup_features) depends on this.
+            socket_connect_timeout=1,
+            socket_timeout=1,
         )
     return _POOLS[target]
 
@@ -43,15 +48,13 @@ class FeatureStore:
         password: str | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
-        host = host or os.getenv("REDIS_HOST", "localhost")
-        port = port or int(os.getenv("REDIS_PORT", "6379"))
-        password = password or os.getenv("REDIS_PASSWORD") or None
-        self.ttl_seconds = ttl_seconds or int(
-            os.getenv("FEATURE_TTL_SECONDS", "172800")
-        )
-        self.client = redis.Redis(
-            connection_pool=_get_pool(host, port, password)
-        )
+        host = host or settings.redis_host
+        port = port or settings.redis_port
+        password = password or settings.redis_password
+        self.ttl_seconds = ttl_seconds or settings.feature_ttl_seconds
+        
+        pool = _get_pool(host, port, password)
+        self.client = redis.Redis(connection_pool=pool)
 
     @staticmethod
     def _key(customer_id: str) -> str:
