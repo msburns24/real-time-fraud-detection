@@ -11,6 +11,7 @@ Publishes synthetic credit-card transactions to Kafka. Two phases:
 Message schema (JSON):
   transaction_id, customer_id, amount, merchant_category, is_online, timestamp, is_fraud
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,13 +25,25 @@ from datetime import datetime, timedelta, timezone
 from kafka import KafkaProducer
 
 MERCHANT_CATEGORIES = [
-    "grocery", "gas_station", "restaurant", "online_retail",
-    "department_store", "pharmacy", "entertainment", "travel",
+    "grocery",
+    "gas_station",
+    "restaurant",
+    "online_retail",
+    "department_store",
+    "pharmacy",
+    "entertainment",
+    "travel",
 ]
 
 
 class TransactionSimulator:
-    def __init__(self, bootstrap_servers: str, topic: str, num_customers: int = 200, seed: int = 789):
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        topic: str,
+        num_customers: int = 200,
+        seed: int = 789,
+    ):
         self.rng = random.Random(seed)
         self.topic = topic
         self.producer = KafkaProducer(
@@ -51,10 +64,15 @@ class TransactionSimulator:
         profile = self.customers[cust_id]
         is_fraud = 1 if self.rng.random() < fraud_rate else 0
         if is_fraud:
-            amount = round(profile["avg"] * self.rng.uniform(6, 20), 2)   # unusually large
+            amount = round(
+                profile["avg"] * self.rng.uniform(6, 20), 2
+            )  # unusually large
             is_online = True
         else:
-            amount = round(max(1.0, self.rng.gauss(profile["avg"], profile["avg"] * 0.35)), 2)
+            amount = round(
+                max(1.0, self.rng.gauss(profile["avg"], profile["avg"] * 0.35)),
+                2,
+            )
             is_online = self.rng.random() < 0.4
         return {
             "transaction_id": str(uuid.uuid4()),
@@ -69,18 +87,28 @@ class TransactionSimulator:
     def _send(self, txn: dict) -> None:
         self.producer.send(self.topic, key=txn["customer_id"], value=txn)
 
-    def backfill(self, hours: int, per_hour: int = 400, fraud_rate: float = 0.01) -> None:
+    def backfill(
+        self, hours: int, per_hour: int = 400, fraud_rate: float = 0.01
+    ) -> None:
         now = datetime.now(timezone.utc)
         total = hours * per_hour
-        print(f"[simulator] backfilling {total} transactions over the last {hours}h...", flush=True)
+        print(
+            f"[simulator] backfilling {total} transactions over the last {hours}h...",
+            flush=True,
+        )
         for _ in range(total):
             when = now - timedelta(seconds=self.rng.uniform(0, hours * 3600))
             self._send(self._make_txn(when, fraud_rate))
         self.producer.flush()
         print("[simulator] backfill complete.", flush=True)
 
-    def simulate_stream(self, duration_seconds: int, rate_per_second: int, fraud_rate: float) -> None:
-        print(f"[simulator] streaming {rate_per_second} TPS for {duration_seconds}s...", flush=True)
+    def simulate_stream(
+        self, duration_seconds: int, rate_per_second: int, fraud_rate: float
+    ) -> None:
+        print(
+            f"[simulator] streaming {rate_per_second} TPS for {duration_seconds}s...",
+            flush=True,
+        )
         interval = 1.0 / max(1, rate_per_second)
         end = time.time() + duration_seconds
         sent = 0
@@ -107,7 +135,9 @@ def main() -> None:
     args = p.parse_args()
 
     sim = TransactionSimulator(
-        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        bootstrap_servers=os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
+        ),
         topic=os.getenv("KAFKA_TOPIC", "transactions"),
     )
     try:

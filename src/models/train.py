@@ -10,6 +10,7 @@ Feature order MUST match what the API sends at inference time
 
 Run:  python -m src.models.train      (after: python data/generate_seed.py)
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,9 @@ def main() -> None:
     df = pd.read_csv(csv_path)
 
     # per-customer aggregates → the same features the store serves at inference
-    agg = df.groupby("customer_id")["amount"].agg(avg_amount="mean", transaction_count="count")
+    agg = df.groupby("customer_id")["amount"].agg(
+        avg_amount="mean", transaction_count="count"
+    )
     df = df.join(agg, on="customer_id")
     df["is_online"] = df["is_online"].astype(int)
 
@@ -40,7 +43,14 @@ def main() -> None:
     out_dir = os.path.join(here, "..", "..", "models")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "fraud_model_v1.pkl")
-    joblib.dump({"model": model, "feature_order": FEATURE_ORDER, "version": "sklearn-logreg-v1"}, out_path)
+    joblib.dump(
+        {
+            "model": model,
+            "feature_order": FEATURE_ORDER,
+            "version": "sklearn-logreg-v1",
+        },
+        out_path,
+    )
     print(f"saved model -> {out_path}  (train fraud rate={y.mean():.3f})")
 
 

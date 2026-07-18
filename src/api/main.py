@@ -8,12 +8,11 @@ YOU IMPLEMENT: the bodies of /predict and /predict_batch (graded: FastAPI Servin
 
 from __future__ import annotations
 
-import os
 import time
 from typing import List, Optional
 
 import redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from loguru import logger
 from pydantic import BaseModel
 

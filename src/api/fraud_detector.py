@@ -6,6 +6,7 @@ to a transparent rule-based scorer so the API still runs end-to-end out of the
 box (this IS the "baseline model" referenced in the assignment). Running
 `python -m src.models.train` upgrades it to the trained scikit-learn model.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,7 +19,9 @@ except Exception:  # joblib optional at import time
 
 class FraudDetector:
     def __init__(self, model_path: str | None = None):
-        self.model_path = model_path or os.getenv("MODEL_PATH", "models/fraud_model_v1.pkl")
+        self.model_path = model_path or os.getenv(
+            "MODEL_PATH", "models/fraud_model_v1.pkl"
+        )
         self.model = None
         self.model_version = "rule-based-fallback"
         self._load()
@@ -31,13 +34,18 @@ class FraudDetector:
                 self.feature_order = bundle["feature_order"]
                 self.model_version = bundle.get("version", "sklearn-v1")
             except Exception as exc:
-                print(f"[detector] could not load model ({exc}); using fallback", flush=True)
+                print(
+                    f"[detector] could not load model ({exc}); using fallback",
+                    flush=True,
+                )
 
     def predict(self, features: dict) -> dict:
         """features: merged transaction + customer features. Returns a dict with
         fraud_probability (0..1), is_fraud (0/1), and model_version."""
         if self.model is not None:
-            row = [[float(features.get(name, 0.0)) for name in self.feature_order]]
+            row = [
+                [float(features.get(name, 0.0)) for name in self.feature_order]
+            ]
             prob = float(self.model.predict_proba(row)[0][1])
         else:
             prob = self._rule_score(features)

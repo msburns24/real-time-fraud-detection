@@ -19,17 +19,13 @@ import json
 import os
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, TypeAlias
-
 
 # ---- Type Hints --------------------------------------------------------------
 
 
 if TYPE_CHECKING:
-    from kafka import KafkaConsumer
-    from src.streaming.feature_store import FeatureStore
-
     EventTimestamp: TypeAlias = float
     TransactionAmount: TypeAlias = float
     CustomerID: TypeAlias = str
@@ -64,7 +60,9 @@ def windowed_stats(
     Pure function - no state or I/O, so can be reused independent of the Kafka
     consumer.
     """
-    windowed = [(t, a) for (t, a) in events if start_exclusive < t <= end_inclusive]
+    windowed = [
+        (t, a) for (t, a) in events if start_exclusive < t <= end_inclusive
+    ]
     amounts = [a for (_, a) in windowed]
     return dict(
         transaction_count=len(amounts),
@@ -116,13 +114,14 @@ class FeatureProcessor:
 def run() -> None:
     """Consumer loop (provided). Reads the topic and updates the store."""
     from kafka import KafkaConsumer
+
     from src.streaming.feature_store import FeatureStore
 
     consumer = KafkaConsumer(
         os.getenv("KAFKA_TOPIC", "transactions"),
-        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(
-            ","
-        ),
+        bootstrap_servers=os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
+        ).split(","),
         group_id="feature-processor",
         auto_offset_reset="earliest",
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),

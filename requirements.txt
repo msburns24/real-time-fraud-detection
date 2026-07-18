@@ -21,3 +21,6 @@ httpx>=0.27
 typer
 loguru
 tqdm
+
+# Formatting / Linting
+ruff

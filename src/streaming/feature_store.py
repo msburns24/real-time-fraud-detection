@@ -49,7 +49,9 @@ class FeatureStore:
         self.ttl_seconds = ttl_seconds or int(
             os.getenv("FEATURE_TTL_SECONDS", "172800")
         )
-        self.client = redis.Redis(connection_pool=_get_pool(host, port, password))
+        self.client = redis.Redis(
+            connection_pool=_get_pool(host, port, password)
+        )
 
     @staticmethod
     def _key(customer_id: str) -> str:
