@@ -23,8 +23,22 @@ services:
       - KAFKA_NUM_PARTITIONS=3
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CLUSTER_ID=5L6g3nShT-eMCtK--X86sw
+
+      # ADDED (2026-07-18): single-broker cluster. offsets.topic.replication.factor
+      # defaults to 3, so __consumer_offsets could never be created — FIND_COORDINATOR
+      # timed out and no consumer group could form (the feature-processor consumed
+      # zero records while the producer worked fine).
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+
+    # MODIFIED from the provided template (2026-07-18): the original probe called
+    # `kafka-topics.sh` bare, but apache/kafka:3.8.0 keeps its scripts in
+    # /opt/kafka/bin, which is not on PATH for the healthcheck shell — so the
+    # broker reported unhealthy forever ("kafka-topics.sh: not found") while
+    # actually serving fine. Absolute path fixes it.
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -39,36 +53,43 @@ services:
       timeout: 5s
       retries: 5
 
-  # ---------- TODO: add YOUR services below ----------
-  # Each builds from your Dockerfile (build: .) and connects to kafka + redis.
-  #
-  # api:
-  #   build: .
-  #   command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-  #   environment:
-  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-  #     - REDIS_HOST=redis
-  #     - MODEL_PATH=models/fraud_model_v1.pkl
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     kafka: { condition: service_started }
-  #     redis: { condition: service_started }
-  #
-  # feature-processor:
-  #   build: .
-  #   command: python -m src.streaming.feature_processor
-  #   environment:
-  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-  #     - REDIS_HOST=redis
-  #   depends_on:
-  #     kafka: { condition: service_started }
-  #     redis: { condition: service_started }
-  #
-  # simulator:
-  #   build: .
-  #   command: python -m src.streaming.transaction_simulator --backfill-hours 24 --duration 300 --rate 50 --fraud-rate 0.01
-  #   environment:
-  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-  #   depends_on:
-  #     kafka: { condition: service_started }
+  
+  # My part!
+  api:
+    build: .
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - REDIS_HOST=redis
+      - MODEL_PATH=models/fraud_model_v1.pkl
+    ports:
+      - "8000:8000"
+    depends_on:
+      kafka: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  
+  feature-processor:
+    build: .
+    command: python -m src.streaming.feature_processor
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=transactions
+      - REDIS_HOST=redis
+      - FEATURE_WINDOW_SECONDS=86400
+    depends_on:
+      kafka: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: on-failure
+    healthcheck:
+      disable: true
+
+  simulator:
+    build: .
+    command: python -m src.streaming.transaction_simulator --backfill-hours 24 --duration 300 --rate 50 --fraud-rate 0.01
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=transactions
+    depends_on:
+      kafka: { condition: service_healthy }
+      feature-processor: { condition: service_started }
+    healthcheck:
+      disable: true
