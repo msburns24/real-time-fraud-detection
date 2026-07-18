@@ -97,6 +97,14 @@ async def predict_fraud(txn: Transaction):
     merged = merge_features(txn.model_dump(), stored)
     prediction = detector.predict(merged)
     latency_ms = (time.perf_counter() - start) * 1000
+
+    logger_bnd = logger.bind(
+        customer_id=txn.customer_id,
+        latency_ms=round(latency_ms, 3),
+        fraud_probability=prediction["fraud_probability"],
+        degraded=stored is None,
+    )
+    logger_bnd.info("prediction served")
     return FraudPrediction(
         transaction_id=txn.transaction_id,
         latency_ms=round(latency_ms, 3),
