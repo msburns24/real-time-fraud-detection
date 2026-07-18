@@ -41,6 +41,17 @@ class FraudPrediction(BaseModel):
     latency_ms: float
 
 
+def merge_features(txn: dict, stored: dict | None) -> dict:
+    """
+    Combine a transaction with its cached customer features.
+
+    `stored` may be None (unknown customer or a degraded lookup). Transaction
+    fields take precedence: they describe *this* event, while stored features
+    summarize the customer's recent history.
+    """
+    return {**(stored or {}), **txn}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -53,18 +64,34 @@ async def model_info():
 
 @app.post("/predict", response_model=FraudPrediction)
 async def predict_fraud(txn: Transaction):
-    """TODO (students):
-    1. look up customer features:  store.get_customer_features(txn.customer_id)
-    2. merge them with the transaction fields into one dict
-    3. score:  detector.predict(merged)
-    4. measure latency and return a FraudPrediction
-    Invalid input already returns HTTP 422 automatically (Pydantic)."""
-    _ = time.time()
-    raise HTTPException(status_code=501, detail="predict_fraud not implemented yet")
+    start = time.perf_counter()
+    stored = store.get_customer_features(txn.customer_id)
+    merged = merge_features(txn.model_dump(), stored)
+    prediction = detector.predict(merged)
+    latency_ms = (time.perf_counter() - start) * 1000
+    return FraudPrediction(
+        transaction_id=txn.transaction_id,
+        latency_ms=round(latency_ms, 3),
+        **prediction,
+    )
 
 
-@app.post("/predict_batch")
+@app.post("/predict_batch", response_model=List[FraudPrediction])
 async def predict_fraud_batch(txns: List[Transaction]):
-    """TODO (students): batch version of /predict — retrieve features for all
-    customers in one call (store.get_customer_features_batch) and score each."""
-    raise HTTPException(status_code=501, detail="predict_fraud_batch not implemented yet")
+    """Score a batch of transactions, fetching all features in one Redis call."""
+    start = time.perf_counter()
+    customer_ids = list({txn.customer_id for txn in txns})
+    stored_by_customer = store.get_customer_features_batch(customer_ids)
+
+    predictions = []
+    for txn in txns:
+        merged = merge_features(txn.model_dump(), stored_by_customer.get(txn.customer_id))
+        prediction = detector.predict(merged)
+        predictions.append(
+            FraudPrediction(
+                transaction_id=txn.transaction_id,
+                latency_ms=round((time.perf_counter() - start) * 1000, 3),
+                **prediction,
+            )
+        )
+    return predictions
