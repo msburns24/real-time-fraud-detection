@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, TypeAlias
 
+from src._logging import get_logger
 from src.config import settings
 
 # ---- Type Hints --------------------------------------------------------------
@@ -116,6 +117,8 @@ def run() -> None:
 
     from src.streaming.feature_store import FeatureStore
 
+    logger = get_logger("feature-processor")
+
     consumer = KafkaConsumer(
         settings.kafka_topic,
         bootstrap_servers=settings.kafka_servers,
@@ -124,14 +127,14 @@ def run() -> None:
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
     )
     processor = FeatureProcessor(feature_store=FeatureStore())
-    print("[feature-processor] consuming...", flush=True)
+    logger.info("Consuming...")
     for msg in consumer:
         try:
             processor.process_and_store(msg.value)
         except NotImplementedError:
             raise
         except Exception as exc:  # keep the consumer alive on bad records
-            print(f"[feature-processor] skipped a record: {exc}", flush=True)
+            logger.warning(f"Skipped a record: {exc}")
 
 
 if __name__ == "__main__":

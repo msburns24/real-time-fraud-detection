@@ -13,12 +13,13 @@ from typing import List, Optional
 
 import redis
 from fastapi import FastAPI
-from loguru import logger
 from pydantic import BaseModel
 
+from src._logging import get_logger
 from src.api.fraud_detector import FraudDetector
 from src.streaming.feature_store import FeatureStore
 
+logger = get_logger("api")
 app = FastAPI(title="TrustBank Fraud Detection API")
 
 # Loaded once at startup (do NOT load the model per-request).
