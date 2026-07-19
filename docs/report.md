@@ -68,7 +68,7 @@ score, are always current because they come from the request itself.
 The decoupling also produces the system's most useful resilience property.
 Since the feature store is consulted rather than depended upon, its absence
 degrades the prediction instead of failing it — a Redis outage costs accuracy,
-not availability (§B2).
+not availability (§B1).
 
 #### Components
 
@@ -94,7 +94,7 @@ retains its own `os.getenv` calls — every module we authored reads through
 Logging runs through `src/_logging.py`, which applies one format across
 services, tags each with its service name, and preserves bound fields as
 structured data rather than interpolating them into the message string — so the
-per-request latency records of §B2 stay machine-readable.
+per-request latency records of §B1 stay machine-readable.
 
 ### A2. Topic and partition design
 
@@ -370,10 +370,333 @@ distance from the actual mistake.
 
 The pool also carries `socket_connect_timeout=1` and `socket_timeout=1`. Those
 belong to the serving story rather than the storage design and are covered in
-§B2, but they are configured here because the pool is where connection
+§B1, but they are configured here because the pool is where connection
 behaviour is owned.
 
 Configuration follows the same override pattern as the rest of the system:
 constructor arguments win when supplied, otherwise values resolve from
 `settings`. That is what lets the tests point a store at a dead port or a
 blackholed host without touching the environment.
+
+#### Measured retrieval latency
+
+Retrieval latency was measured with `scripts/bench_feature_store.py`, which
+writes a known key, reads it back N times timing each read individually, and
+reports the distribution. Measurements were taken from the host against the
+published Redis port with the rest of the stack running, so they include the
+loopback hop the API itself pays rather than measuring Redis in isolation.
+
+| Run          | mean | p50  | p95  | p99  | max  |
+| ------------ | ---- | ---- | ---- | ---- | ---- |
+| 1 (cold)     | 0.13 | 0.10 | 0.32 | 0.50 | 1.00 |
+| 2            | 0.06 | 0.07 | 0.09 | 0.11 | 0.36 |
+| 3            | 0.04 | 0.03 | 0.08 | 0.09 | 0.14 |
+| 4            | 0.04 | 0.04 | 0.04 | 0.04 | 0.24 |
+
+**Table 3** — Retrieval latency in milliseconds, n=1000 reads per run.
+
+**Steady-state p95 is approximately 0.04–0.09 ms**, three orders of magnitude
+below the 50 ms requirement.
+
+The first run is reported rather than discarded because the gap is instructive.
+Its p95 of 0.32 ms is roughly four times the warm figure, and the cause is
+connection establishment: the pool opens its first socket lazily on the first
+read, and that one-off cost lands inside the measured window. Every later run
+inherits a warm pool. Reporting run 1 alone would overstate steady-state latency
+by about 4×; discarding it silently would hide the fact that the *first* request
+after a process starts genuinely is slower — which matters for a service whose
+containers are restarted on deploy.
+
+Two caveats bound what these numbers claim. They measure single-key `GET`
+retrieval, so batch retrieval is not represented — a `MGET` for k customers
+costs roughly one round-trip regardless of k, making per-customer cost strictly
+lower in the batch path. And they were taken against a local Redis over
+loopback; a networked Redis would add its round-trip time, which would dominate
+this figure entirely.
+
+The practical conclusion is that the feature store is nowhere near being the
+system's constraint. At p95 0.09 ms it accounts for well under a tenth of a
+millisecond of a request measured at 1.57 ms end-to-end — a point §P3 develops
+when locating the actual bottleneck.
+
+### A5. Links to implementation
+
+Repository: <https://github.com/msburns24/real-time-fraud-detection>
+
+<!-- TODO before export: convert these to permalinks pinned to the final commit
+     SHA (GitHub: press `y` on a file view). Line anchors drift otherwise. -->
+
+| What                       | Where                                                                 |
+| -------------------------- | --------------------------------------------------------------------- |
+| Windowed aggregation       | [`feature_processor.py` › `windowed_stats()`](../src/streaming/feature_processor.py#L53) |
+| Window evaluation          | [`feature_processor.py` › `features()`](../src/streaming/feature_processor.py#L89) |
+| Consumer loop              | [`feature_processor.py` › `run()`](../src/streaming/feature_processor.py#L114) |
+| Producer keying            | [`transaction_simulator.py` › `_send()`](../src/streaming/transaction_simulator.py#L88) |
+| Feature write (atomic TTL) | [`feature_store.py` › `store_customer_features()`](../src/streaming/feature_store.py#L63) |
+| Batch retrieval (`MGET`)   | [`feature_store.py` › `get_customer_features_batch()`](../src/streaming/feature_store.py#L80) |
+| Connection pooling         | [`feature_store.py` › `_get_pool()`](../src/streaming/feature_store.py#L26) |
+| Configuration              | [`config.py` › `Settings`](../src/config.py#L16)                        |
+| Windowing fixture          | [`tests/fixtures/window_fixture.json`](../tests/fixtures/window_fixture.json) |
+| Retrieval benchmark        | [`scripts/bench_feature_store.py`](../scripts/bench_feature_store.py)   |
+
+**Table 4** — Part A implementation index.
+
+---
+
+## Part B — Model Serving & Containerization
+
+### B1. API design and endpoints
+
+The service exposes four endpoints:
+
+| Method | Path             | Purpose                                                     |
+| ------ | ---------------- | ----------------------------------------------------------- |
+| `GET`  | `/health`        | Liveness probe; backs the container `HEALTHCHECK`            |
+| `GET`  | `/model/info`    | Reports the loaded model version                            |
+| `POST` | `/predict`       | Scores a single transaction                                 |
+| `POST` | `/predict_batch` | Scores a list, retrieving all features in one Redis command |
+
+**Table 5** — API surface.
+
+#### Schema-driven validation
+
+Request and response shapes are declared as Pydantic models —
+`Transaction` and `FraudPrediction` — rather than validated by hand. FastAPI
+enforces them at the boundary, so malformed input never reaches application
+code and returns HTTP 422 with a machine-readable description of what was
+wrong:
+
+```json
+{ "detail": [ { "type": "missing", "loc": ["body", "amount"],
+               "msg": "Field required", "input": { … } } ] }
+```
+
+Both omitted fields and wrong types are rejected: sending no `amount` and
+sending `"amount": "not-a-number"` each return 422. The value here is that the
+validation rules and the API documentation are the *same* declaration — the
+schema drives request parsing, the 422 responses, and the OpenAPI document
+served at `/docs`, so they cannot drift apart. §P4 returns to this, because the
+one place that guarantee costs measurable latency is on the response path.
+
+Only `transaction_id` is optional; `customer_id`, `amount`,
+`merchant_category`, `is_online`, and `timestamp` are required.
+
+#### The model is loaded once
+
+`FraudDetector` and `FeatureStore` are instantiated at module scope
+(`main.py:26-27`), so the model artifact is deserialised exactly once when the
+process starts — not per request.
+
+The cost this avoids was measured rather than assumed, and it has two distinct
+components. The **first** `joblib.load` in a process takes **≈470 ms**, most of
+which is importing the scikit-learn machinery required to unpickle the estimator
+rather than reading the 
+file. **Subsequent** loads in the same process cost **0.11 ms** (p50 over 20
+reloads), since the imports are cached.
+
+Loading inside the handler would therefore be doubly wrong. The first request
+served by each container would absorb the full ~470 ms — a latency spike on
+exactly the request most likely to be a health check or a cold-start probe —
+and every later request would still pay 0.11 ms, which is **14% of the measured
+0.77 ms p50** for work that never varies between requests. Hoisting it to module
+scope pays the 470 ms once at startup, where `HEALTHCHECK --start-period=10s`
+already accommodates it (§B2).
+
+The same reasoning applies to the store's connection pool, established once and
+shared across requests (§A4).
+
+`/model/info` reports `sklearn-logreg-v1`, confirming the trained artifact is
+the one in use rather than the rule-based fallback that `FraudDetector`
+substitutes when no model file is present.
+
+#### Request flow
+
+`/predict` performs four steps under a single `time.perf_counter()` span:
+retrieve the customer's cached features, merge them with the incoming
+transaction, score the merged record, and return the prediction with its
+measured latency.
+
+Merging is delegated to a small helper so that single and batch paths cannot
+diverge:
+
+```python
+def merge_features(txn: dict, stored: dict | None) -> dict:
+    return {**(stored or {}), **txn}
+```
+
+**Transaction fields take precedence on collision.** The ordering is
+deliberate: cached features summarise a customer's history, while the
+transaction describes the event actually being scored, so the request must win.
+Handling `None` inside the helper — rather than at each call site — means an
+unknown customer and a degraded lookup both reduce to "score on the transaction
+alone" without duplicated branching.
+
+#### Batch scoring
+
+`/predict_batch` accepts a list and returns predictions **in request order**.
+Customer IDs are de-duplicated into a set before retrieval, so a batch
+containing several transactions for the same customer still issues one lookup
+for that customer, and the whole batch costs a single `MGET` (§A4).
+
+One semantic is worth stating explicitly because it is a defensible choice
+rather than an oversight: each item's `latency_ms` is measured from the *start
+of the batch*, so later items report larger values. It therefore means "elapsed
+when this prediction became available", not "time spent scoring this item". For
+a caller waiting on the whole response that is the more useful quantity, but it
+is not comparable to the per-request `latency_ms` returned by `/predict`.
+
+#### Graceful degradation
+
+A feature-store outage must not become a serving outage. Both retrieval paths
+are wrapped so that Redis failures degrade the prediction rather than failing
+the request:
+
+```python
+try:
+    return store.get_customer_features(customer_id)
+except redis.RedisError as exc:
+    logger.warning(f"feature lookup degraded for {customer_id}: {exc}")
+    return None
+```
+
+The exception type is deliberately narrow. Catching `redis.RedisError`
+specifically — rather than a bare `except` — means connection failures, timeouts
+and protocol errors degrade gracefully, while a genuine bug in our own code
+(a `KeyError`, a `TypeError`) still propagates and surfaces as a 500 rather than
+being silently swallowed and mislabelled as a Redis problem. A bare `except`
+here would convert every programming error into a plausible-looking prediction.
+
+With Redis stopped entirely, the full API test suite still passes and both
+endpoints return **200**, scoring from the transaction fields alone.
+
+**Timeouts are what make this fast rather than merely correct.** A *refused*
+connection fails immediately, so the naive implementation appears to degrade
+well when Redis is simply stopped. A *blackholed* host — packets dropped with no
+RST, the more realistic network partition — behaves completely differently:
+redis-py leaves socket timeouts unset by default, so the request would block
+indefinitely. Setting `socket_connect_timeout=1` and `socket_timeout=1` on the
+pool bounds it. Pointed at an unroutable address (`10.255.255.1`), `/predict`
+returns in **1.02 s** rather than hanging.
+
+That distinction is worth drawing out because testing only the easy failure —
+stopping the container — would have produced a system that looked resilient and
+was not.
+
+#### Observability
+
+Each request emits a structured log record with the measurement and its context
+bound as fields rather than interpolated into the message:
+
+```
+prediction served | {'service': 'api', 'customer_id': 'CUST0001',
+                     'latency_ms': 0.386, 'fraud_probability': 1.0,
+                     'degraded': True}
+```
+
+Keeping these as fields rather than formatted text means a JSON sink can index
+them directly, and the pairing of `latency_ms` with `degraded` is what allows a
+slow request to be attributed to a feature-store problem rather than to the
+model.
+
+**A known limitation applies to that attribution.** The `degraded` flag is
+currently derived from `stored is None`, but `lookup_features` returns `None`
+for two different conditions: a Redis error *and* an ordinary cache miss. An
+unknown customer with Redis perfectly healthy is therefore logged as
+`degraded: True`, as the record above shows — that request was a cache miss, not
+an outage. The flag is consequently a reliable indicator that features were
+*absent*, but not that Redis was *unavailable*, and it should not be used to
+alert on store health as it stands. The fix is to signal the two cases
+distinctly — returning a `(features, degraded)` pair, or setting the flag only
+in the `except` branch — and is noted rather than applied because the change
+landed outside the scope of this submission.
+
+### B2. Containerization
+
+The API ships as a multi-stage image. A builder stage installs dependencies
+under a staging prefix; the runtime stage copies only the installed tree:
+
+```dockerfile
+FROM python:3.11-slim AS builder
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+FROM python:3.11-slim
+COPY --from=builder /install /usr/local
+COPY src/ ./src/  models/ ./models/  data/ ./data/
+```
+
+The `--prefix=/install` / `COPY … /usr/local` pairing is the part that has to be
+right: it works because `/usr/local` is exactly where the runtime image's
+`site-packages` lives, so the copied tree lands on the interpreter's import
+path. Getting this wrong produces an image that builds cleanly and then fails at
+first import — which is why the build was verified by importing the real
+dependency graph inside the container, not merely by the build succeeding.
+
+**Image size is 796 MB**, and honesty requires noting that multi-stage buys less
+here than it often does. The largest contributors are the scientific stack —
+scipy 113 MB, pandas 76 MB, scikit-learn 50 MB, numpy 45 MB, plus ~58 MB of
+bundled shared libraries — which the runtime genuinely needs. What the second
+stage does eliminate is build residue: the pip cache, `requirements.txt`, and
+the builder's working tree never appear in a runtime layer. A materially smaller
+image would require dropping pandas from the serving path or moving to a
+slimmer inference runtime, neither of which was in scope.
+
+#### Build context
+
+`.dockerignore` excludes `.venv/`, `.git/`, caches, `logs/`, and `.env`. The
+measured context is **1.1 MB**; the virtualenv alone is **537 MB** and would
+otherwise be uploaded to the daemon on every single build.
+
+Excluding `.env` is a security property rather than a performance one: it keeps
+credentials from being baked into an image layer, where they would persist even
+if a later layer deleted the file.
+
+#### Non-root execution
+
+```dockerfile
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+```
+
+The ordering matters. `chown` runs **before** `USER`, so `/app` is owned by the
+account that will run the process; switching users first would leave the
+application files owned by root and readable-but-not-writable by the runtime
+user. `docker inspect` confirms `User=appuser` on the running container.
+
+#### Health checking
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+```
+
+The conventional `CMD curl -f http://localhost:8000/health` **cannot work on
+this image** — `python:3.11-slim` ships no `curl`, so the probe would fail with
+"command not found" and the container would report `unhealthy` forever while
+serving traffic perfectly. Using the interpreter that is guaranteed present
+avoids adding a package solely to support the probe.
+
+`--start-period=10s` exists to cover startup: the ~470 ms model load (§B1) plus
+uvicorn's boot, during which failing probes are not counted against the retry
+budget. The running container reports `Health=healthy`.
+
+#### Compose orchestration
+
+Five services are wired together, with the application services gated on
+dependency health rather than mere process start:
+
+```yaml
+depends_on:
+  kafka: { condition: service_healthy }
+  redis: { condition: service_healthy }
+```
+
+`service_started` would only assert that a container had been created — the API
+could then begin serving before Kafka accepted connections. `service_healthy`
+waits for the dependency's own healthcheck to pass.
+
+One detail is easy to miss: `feature-processor` and `simulator` are built from
+the **same image** as the API, so they inherit its HTTP `HEALTHCHECK` — and
+neither serves HTTP, so both would be permanently `unhealthy`. Each therefore
+sets `healthcheck: { disable: true }`. The symptom is cosmetic, but on a
+`service_healthy` dependency it would deadlock a dependent service indefinitely.

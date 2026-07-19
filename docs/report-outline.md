@@ -128,7 +128,8 @@
 
 - [ ] **Multi-stage build:** builder installs to `/install`; `python:3.11-slim`
       runtime copies it to `/usr/local` plus `src/`, `models/`, `data/`.
-- [ ] `.dockerignore` — build context **537 MB → 821 kB** by excluding `.venv/`.
+- [ ] `.dockerignore` — keeps the build context at **~1.1 MB** (measured); the
+      `.venv/` alone is **537 MB**. (Was 821 kB at step 5.1; `docs/` has grown.)
       Concrete, quotable number.
 - [ ] **Non-root:** `useradd appuser` + `chown -R` *before* `USER`, so app files
       are owned by the runtime user. `docker inspect` → `User=appuser`.

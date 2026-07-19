@@ -394,24 +394,24 @@ early, pull stills from the video instead (`ffmpeg -ss <t> -i segN.mp4
       `SET ... EX` TTL, one-round-trip `MGET` batch (proven via
       `cmdstat_mget: 1`), pooling with `decode_responses` on the pool. _Check:_
       each claim traceable to `feature_store.py`.
-- [ ] **10.7** _(A4, 2 pts)_ **Measured retrieval latency** — p50 0.04 / p95
+- [x] **10.7** _(A4, 2 pts)_ **Measured retrieval latency** — p50 0.04 / p95
       0.10 / p99 0.17 / max 0.53 ms (n=1000). _Check:_ p95 reported against the
       <50 ms target with the method named.
-- [ ] **10.8** _(A5)_ **Links to implementation** — permalinked to a commit SHA.
+- [x] **10.8** _(A5)_ **Links to implementation** — permalinked to a commit SHA.
       _Check:_ every link resolves (broken links are a named deduction).
 
 ### Phase 11 — Report Part B: Serving & Containerization (3 pages, 40 pts)
 
-- [ ] **11.1** _(B1)_ **API design & endpoints** — endpoint table, Pydantic
+- [x] **11.1** _(B1)_ **API design & endpoints** — endpoint table, Pydantic
       validation (422 for free), model loaded **once** at startup
       (`main.py:26`), `/predict_batch` dedup → one `MGET` → request-order
       results, merge precedence. _Check:_ the 3-pt "loaded once" claim is
       evidenced by the line reference.
-- [ ] **11.2** _(B1)_ **Robustness & observability** — `redis.RedisError`
+- [x] **11.2** _(B1)_ **Robustness & observability** — `redis.RedisError`
       caught specifically, 200 with Redis down, 1s timeouts verified against a
       blackholed host (1.02 s), per-request structured latency log. _Check:_
       degradation described with its measured evidence.
-- [ ] **11.3** _(B2)_ **Containerization** — multi-stage build, `.dockerignore`
+- [x] **11.3** _(B2)_ **Containerization** — multi-stage build, `.dockerignore`
       537 MB → 821 kB, non-root `appuser` with `chown` before `USER`,
       `HEALTHCHECK` via `urllib` (no `curl` in slim), compose
       `service_healthy` gating, `healthcheck: {disable: true}` on the non-HTTP
@@ -534,7 +534,19 @@ gets tight, the cut order above is the fallback.
 
 ## Parking lot (found mid-step; not yet scheduled)
 
-- [ ] **P1** `FraudDetector.predict` builds a bare `[[...]]` list, so sklearn
+- [x] **P1** ✅ CLOSED 2026-07-19. Fixed at **fit** time, not predict time:
+      `train.py` now calls `model.fit(X.to_numpy(), y)`, so sklearn never records
+      `feature_names_in_` and has nothing to warn about. **The obvious fix was
+      measured and rejected** — building a `pd.DataFrame` per request costs
+      **320.7 µs vs 44.3 µs** for a bare list (7.2×), which would have added
+      ~276 µs to a 770 µs request (**+36% end-to-end**) purely to silence a
+      cosmetic warning. Fitting on an array costs nothing (43.4 µs) and keeps the
+      `FEATURE_ORDER` contract, since both sides reference the constant.
+      Verified: artifact has no `feature_names_in_`, `n_features_in_ 4`;
+      `-W error::UserWarning` does not trip; **0 `UserWarning` lines** in the
+      whole container log after rebuild; `/predict` still 1.0 for $4000 online on
+      `sklearn-logreg-v1`; suite **7/7** (warnings 6 → 5).
+      _Original entry:_ `FraudDetector.predict` builds a bare `[[...]]` list, so sklearn
       emits `UserWarning: X does not have valid feature names, but
       LogisticRegression was fitted with feature names` on every scored
       request — it pollutes test output and a grader may notice. Fix: pass a
@@ -1120,3 +1132,125 @@ gets tight, the cut order above is the fallback.
   also re-run: two default stores share one pool, `port=6380` isolated, 2 cached,
   `decode_responses` True on the pool. Next: **10.7** (§A4 measured retrieval
   latency — 2 pts).
+- 2026-07-19 — **10.7 done. §A4 and Part A prose complete** (only 10.8 links
+  remain). Re-ran `bench_feature_store` instead of citing 2.5's numbers — and
+  the first run came back **~3× slower** (p95 **0.32 ms** vs 2.5's 0.10).
+  Ran it three more times before writing anything: p95 **0.09 / 0.08 / 0.04**.
+  **Diagnosis: cold-start, not regression** — the pool opens its first socket
+  lazily on the first read, so connection establishment lands inside run 1's
+  measurement window. 2.5's figures were warm and remain representative.
+  Reported **all four runs in Table 3** rather than discarding the outlier:
+  quoting run 1 alone overstates steady state ~4×, but hiding it conceals that
+  the first request after a container start genuinely is slower — which matters
+  for a service restarted on every deploy. Steady-state p95 **0.04–0.09 ms**,
+  three orders of magnitude under the 50 ms bar. Also bounded the claim
+  honestly: single-key `GET` only (batch is cheaper per customer), local
+  loopback only (a networked Redis would dominate).
+  **Lesson (generalizes):** always re-run a benchmark before quoting it, and
+  always run it more than once — a single sample would have had us report either
+  a fake 3× regression or a silently-discarded outlier.
+  **Figure 1 image NOT swapped in — it has three defects** (user to fix):
+  (1) the `POST /predict` arrow terminates at **Redis**, not FastAPI, which
+  directly contradicts §A1's argument that the client only ever talks to the API;
+  (2) "merge + **scope**" should be "score"; (3) consumer group labelled
+  `"feature processor"` but the real `group_id` is `feature-processor` — and it
+  appears hyphenated in Figure 2's evidence. Report keeps the ASCII diagram until
+  fixed. Dark background will also print heavily in the PDF.
+  **Noted for Phase 14:** the `simulator` service has **exited** (its
+  `--duration 300` completed), so only 4 services are up. The screencast must
+  restart it to show features landing live. Next: **10.8** (§A5 implementation
+  links) — see the permalink-vs-SHA note; code still changes in 12.4.
+- 2026-07-19 — **10.8 done. PHASE 10 COMPLETE — Part A fully drafted.** §A5 is a
+  10-row implementation index (Table 4) covering aggregation, window evaluation,
+  the consumer loop, producer keying, atomic-TTL write, `MGET` batch, pooling,
+  config, the fixture, and the benchmark.
+  **Written as repo-relative paths with line anchors, deliberately not
+  permalinks yet** — 12.4 still edits `main.py`, so SHAs pinned now would point
+  at pre-optimization code. An HTML comment marker sits in the section so 15.1
+  converts them (GitHub: press `y` on a file view to get a pinned URL).
+  Verified: all **8 line anchors** land on exactly the declared definition
+  (`windowed_stats` L53, `features` L89, `run` L114, `_send` body L88,
+  `store_customer_features` L63, `get_customer_features_batch` L80, `_get_pool`
+  L26, `Settings` L16) and all **6 relative paths** resolve from `docs/`.
+  ⚠️ Line anchors drift on any reformat — re-verify at 13.3 (link audit), not
+  just at 15.1. Next: **11.1** (§B1 API design & endpoints) — Part B begins.
+- 2026-07-19 — **11.1 done. Part B begun.** §B1 written: endpoint table (Table
+  5), schema-driven validation with the real 422 body, model-loaded-once (3 pts),
+  request flow + `merge_features` precedence, and batch semantics.
+  **Claim corrected by measurement — the draft was an order of magnitude off.**
+  Wrote "loading a joblib artifact costs tens of milliseconds"; measured it and
+  got **468.8 ms**. Digging further split it cleanly: the **first** `joblib.load`
+  in a process is ~470 ms (mostly importing sklearn's unpickling machinery, not
+  file I/O), while **warm reloads are 0.11 ms p50** over 20 iterations. So the
+  original sentence was wrong twice — wrong magnitude, and wrong model of the
+  cost.
+  Rewrote the argument around the real shape, which is stronger: per-request
+  loading would make the **first** request of every container absorb ~470 ms
+  (landing on whatever hits it first — often a health check), *and* every later
+  request pay 0.11 ms = **14% of the 0.77 ms p50** for work that never varies.
+  Also ties to `HEALTHCHECK --start-period=10s`, which already covers the
+  startup cost.
+  **Pinned:** `joblib.load` cold ≈470 ms / warm ≈0.11 ms — reuse in §P3 if the
+  cold-start story comes up again.
+  Live-verified: missing field → **422** (captured the real `detail` body for the
+  report), wrong type → **422**, `/model/info` → `sklearn-logreg-v1` (trained
+  artifact, not the fallback), `main.py:26-27` module scope confirmed, and only
+  `transaction_id` optional in the `Transaction` model. Next: **11.2** (§B1
+  robustness & observability).
+- 2026-07-19 — **11.2 done. §B1 complete.** Wrote graceful degradation (narrow
+  `redis.RedisError` catch, and *why* — a bare `except` would turn every
+  programming error into a plausible-looking prediction), the refused-vs-
+  blackholed timeout distinction (1.02 s measured against `10.255.255.1`, with
+  the point that testing only the *easy* failure would have shipped a system
+  that looked resilient and wasn't), and structured logging.
+  **P5 confirmed live and documented honestly rather than papered over:**
+  `NOSUCHCUST` with Redis fully healthy logs `degraded: True`, because
+  `lookup_features` returns `None` for both a `RedisError` and an ordinary cache
+  miss. The report now states that `degraded` reliably means "features absent"
+  but **not** "Redis unavailable", and must not be used to alert on store
+  health. Fix noted (return a `(features, degraded)` pair) but not applied.
+  **Cross-reference drift caught and fixed before it spread.** I had been
+  writing `§B2` for robustness and `§B3` for containerization, but the prompt's
+  Part B has only four subsections (API+validation · containerization ·
+  blue-green · links), so robustness belongs *inside* B1. Corrected 4 refs
+  (report lines 71, 97, 373 → `§B1`; 503 → `§B2`).
+  **Pinned section map — use this, don't re-derive:** A1 architecture · A2
+  partitions · A3 windowing · A4 feature store · A5 links · **B1 API +
+  validation + robustness + observability** · **B2 containerization** · **B3
+  blue-green** · **B4 links** · P1 method · P2 results · P3 bottleneck · P4
+  optimization.
+  Also seen in the container logs: the **P1 sklearn `UserWarning`** ("X does not
+  have valid feature names") fires on every scored request and pollutes
+  `docker compose logs api` — a grader running the demo will see it. Cheap fix
+  if time allows. Next: **11.3** (§B2 containerization).
+- 2026-07-19 — **P1 closed + 11.3 done.** P1 fixed at *fit* time
+  (`model.fit(X.to_numpy(), y)`) after measuring that the obvious predict-time
+  `pd.DataFrame` fix costs **320.7 µs vs 44.3 µs** — 7.2×, ~+36% end-to-end — to
+  silence a cosmetic warning. Zero `UserWarning` in the container log after
+  rebuild; suite 7/7; warnings 6 → 5.
+  §B2 written: `--prefix=/install` → `/usr/local` and *why* it works (that is
+  where the runtime's `site-packages` lives — get it wrong and the image builds
+  clean then dies at first import), `.dockerignore`, non-root with the
+  `chown`-before-`USER` ordering argument, the `curl`-less healthcheck, and
+  compose `service_healthy` gating.
+  **Two stale numbers corrected by re-measuring:**
+  (1) Build context is **1.122 MB**, not the 821 kB recorded at 5.1 — `docs/`
+  has grown since (report, architecture, figures). Fixed in
+  `report-outline.md`; README did not carry the figure.
+  (2) A `tar --exclude-from=.dockerignore` estimate gave a nonsense **369 MB**
+  because tar does not apply Docker's ignore semantics — **discarded it and took
+  the authoritative number from `docker build`'s own "Sending build context"
+  line.** Worth remembering: do not approximate the context with tar.
+  **Honest sizing added rather than spun:** image is **796 MB**, dominated by
+  scipy 113 / pandas 76 / sklearn 50 / numpy 45 MB + ~58 MB bundled libs. The
+  report says plainly that multi-stage buys less here than usual — it removes
+  build residue (pip cache, requirements, builder tree) but the ML stack sets the
+  floor.
+  Also noted: excluding `.env` is a **security** property (keeps credentials out
+  of image layers, where they survive later deletion) — ties to the rubric's
+  "hardcoded credentials" deduction.
+  **Environment quirk:** this Docker uses the **legacy builder**, not BuildKit —
+  `--progress=plain` is rejected; context size comes from the
+  `Sending build context to Docker daemon` line. Next: **11.4** (screenshots) or
+  **11.5** (blue-green prose) — 11.4 needs the stack + a live swap, so it may
+  batch with Phase 14.
