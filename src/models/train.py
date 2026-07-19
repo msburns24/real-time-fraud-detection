@@ -37,8 +37,10 @@ def main() -> None:
     X = df[FEATURE_ORDER].astype(float)
     y = df["is_fraud"].astype(int)
 
+    # Fit on a plain array: sklearn only records feature_names_in_ when handed
+    # a DataFrame, which then warns on every list-based predict at serving time.
     model = LogisticRegression(max_iter=1000, class_weight="balanced")
-    model.fit(X, y)
+    model.fit(X.to_numpy(), y)
 
     out_dir = os.path.join(here, "..", "..", "models")
     os.makedirs(out_dir, exist_ok=True)
