@@ -191,7 +191,7 @@
 
 ### P2. Results
 
-- [ ] Table ‹`docs/perf_7.1_before.json`›:
+- [ ] Table ‹`results.json`›:
 
   | Metric     | Result         |
   | ---------- | -------------- |
@@ -244,7 +244,7 @@
 
 - [ ] Change: `response_model=None` on `/predict`, removing the redundant
       response-validation pass.
-- [ ] **Before:** p50 0.77 / p95 1.57 ms ‹`docs/perf_7.1_before.json`›
+- [ ] **Before:** p50 0.77 / p95 1.57 ms ‹`results.json`›
 - [ ] **After:** TODO — re-run the harness with the change applied.
 - [ ] **Decision and rationale:** whether kept or reverted, state it. The
       trade is ~0.2 ms against losing `/predict`'s OpenAPI schema; at 60×

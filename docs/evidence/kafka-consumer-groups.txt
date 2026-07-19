@@ -1,0 +1,5 @@
+
+GROUP             TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                             HOST            CLIENT-ID
+feature-processor transactions    1          14306           14306           0               kafka-python-3.0.8-0ba113c8-6dd2-4d34-bb36-96d8bda3466c /172.18.0.2     kafka-python-3.0.8
+feature-processor transactions    2          15503           15503           0               kafka-python-3.0.8-0ba113c8-6dd2-4d34-bb36-96d8bda3466c /172.18.0.2     kafka-python-3.0.8
+feature-processor transactions    0          18632           18632           0               kafka-python-3.0.8-0ba113c8-6dd2-4d34-bb36-96d8bda3466c /172.18.0.2     kafka-python-3.0.8

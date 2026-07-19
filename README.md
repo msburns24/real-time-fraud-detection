@@ -181,7 +181,7 @@ full suite.
 ```
 
 Measured against the full stack, direct to the API
-(`docs/perf_7.1_before.json`):
+(`results.json`):
 
 | Metric     | Result         |
 | ---------- | -------------- |
