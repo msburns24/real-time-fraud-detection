@@ -5,15 +5,15 @@ feeds a windowed feature processor, which writes rolling per-customer
 aggregates into Redis; a FastAPI service joins those cached features with the
 incoming transaction and scores it with a trained scikit-learn model.
 
-Measured end-to-end: **p95 1.42 ms** at **1497 req/s**, against a 100 ms
-requirement — roughly 70× headroom. Numbers and method in
+Measured end-to-end: **p95 2.97 ms** at **1023 req/s**, against a 100 ms
+requirement — roughly 34× headroom. Numbers and method in
 [Performance](#performance); design rationale, failure modes and known
 limitations in [docs/architecture.md](docs/architecture.md).
 
-**See it running:** [`screencast/demo.mp4`](screencast/demo.mp4) — a 2-minute
+**See it running:** [`screencast/demo.mp4`](screencast/demo.mp4) — a 3-minute
 recorded tour of the live stack (streaming, scoring, blue-green cutover under
-load, performance run, Redis failure and recovery). Per-segment videos and
-commentary in [screencast/](screencast/).
+load, performance run, Redis failure and recovery, batch lookups, hot-path
+profile). Per-segment videos and commentary in [screencast/](screencast/).
 
 ```
                   ┌──────────────────┐
@@ -191,14 +191,22 @@ Measured against the full stack, direct to the API
 | Metric     | Result         |
 | ---------- | -------------- |
 | Requests   | 5000, 0 errors |
-| Throughput | 1497 req/s     |
-| p50        | 0.50 ms        |
-| p95        | 1.42 ms        |
-| p99        | 3.24 ms        |
-| max        | 5.47 ms        |
+| Throughput | 1023 req/s     |
+| p50        | 0.63 ms        |
+| p95        | 2.97 ms        |
+| p99        | 3.95 ms        |
+| max        | 6.51 ms        |
 
-Median of three consecutive runs (throughput 1392–1571 req/s, p95 1.27–1.49 ms,
-zero errors throughout).
+Median run of five, taken with the transaction stream live. Expect wide
+variation: throughput ranged 681–1178 req/s and p95 2.37–3.85 ms across those
+five, zero errors throughout. With the simulator stopped the same harness gives
+~1234 req/s and p95 2.71 ms. Treat any single figure as an order of magnitude
+rather than a benchmark — on a developer machine the measurement noise is larger
+than most changes worth making.
+
+Note the recording of this run in `screencast/` passes `--out` so it writes to a
+scratch path: the harness overwrites `results.json` by default, and re-recording
+the screencast would otherwise silently replace the committed artifact.
 
 Run with `--n 5000` rather than the default 1000: at ~1.5k rps, 1000 requests
 is under a second of sampling, which makes p99 mostly noise and lets startup
@@ -220,7 +228,7 @@ p50 in ms):
 | logging          | 0.0215     |
 | **total**        | **0.1427** |
 
-Application code is only **19%** of a 0.769 ms request. Benchmarking `/health`
+Application code is a minority of a request. Benchmarking `/health`
 (which does no work) through the same client gives a transport floor of 0.260
 ms — which leaves **~0.366 ms, 48% of every request, in FastAPI's per-request
 model machinery**. Inbound validation is negligible at 0.005 ms, so the cost is

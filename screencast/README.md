@@ -3,8 +3,8 @@
 A recorded tour of the running system. Everything here is a real run against
 the live stack — no mock output, no edited terminal text.
 
-**Watch the whole thing: [`demo.mp4`](demo.mp4)** (2 min 08 s, 604 KB) — the
-seven segments below, joined with title cards.
+**Watch the whole thing: [`demo.mp4`](demo.mp4)** (3 min 04 s, 796 KB) — the
+nine segments below, joined with title cards.
 
 Individual segments are also kept separately, each with a GIF preview that
 renders inline on GitHub and an MP4 for playback.
@@ -73,11 +73,18 @@ The script says so itself, printing `PASS` or `INCONCLUSIVE`.
 
 ![performance](segment5-performance.gif)
 
-5,000 requests against the full stack: p50 0.50 ms, p95 1.42 ms, p99 3.24 ms,
-about 1,500 req/s, zero errors — against a 100 ms requirement. These are cache
-*hits*, verified rather than assumed: the harness draws from the same
-`CUST0000`–`CUST0199` ID space the simulator populates, so the numbers cover the
-real lookup → merge → score path.
+5,000 requests against the full stack, zero errors, against a 100 ms
+requirement — roughly 34× headroom at p95. These are cache *hits*, verified
+rather than assumed: the harness draws from the same `CUST0000`–`CUST0199` ID
+space the simulator populates, so the numbers cover the real lookup → merge →
+score path.
+
+The exact figures on screen will differ from the report's Table 9 and from any
+other take, because throughput varies by ~1.7× run to run on a developer
+machine. The report quotes the median of five and says so; this is one run.
+Note also that the tape passes `--out /tmp/demo_results.json` — the harness
+overwrites `results.json` by default, and recording this segment would otherwise
+replace the committed artifact the report cites.
 
 ## 6. Graceful degradation
 
@@ -106,6 +113,37 @@ its `HEALTHCHECK` reports `healthy` — a check implemented with
 `python -c urllib.request` because the slim base image ships no `curl`. Then the
 test suite, 7 passing.
 
+## 8. Batch scoring
+
+[`segment8-batch.mp4`](segment8-batch.mp4)
+
+![batch](segment8-batch.gif)
+
+Five transactions spanning three customers, scored in one request. The claim
+worth proving is that this costs the feature store **one** round-trip rather
+than five, so the segment proves it against Redis rather than asserting it:
+command counters are reset immediately before the request, and afterwards
+`INFO commandstats` shows `cmdstat_mget:calls=1` and no `GET` at all.
+
+Note that `latency_ms` accumulates down the list — it measures elapsed time
+since the batch began, not per-item scoring cost.
+
+## 9. Where the time goes
+
+[`segment9-profile.mp4`](segment9-profile.mp4)
+
+![profile](segment9-profile.gif)
+
+The hot path profiled in isolation over 2,000 iterations: Redis `GET` ~0.05 ms,
+model inference ~0.06 ms, logging ~0.02 ms, validation and merge negligible —
+about **0.14 ms of application work** in total. Benchmarking `/health`, which
+does no work, through the same client shows a 0.26 ms transport floor.
+
+Application code is therefore a minority of a request: the system is
+**framework-bound, not compute-bound**. Full decomposition, and the optimisation
+that was tried and rejected on the evidence, are in
+[the report](../docs/report.md#p3-bottleneck-analysis).
+
 ---
 
 ## How these were made
@@ -128,7 +166,8 @@ means the demos are runnable on their own, without VHS installed.
 Segments are recorded at different heights so nothing scrolls off. To join
 them, [`build_demo.sh`](build_demo.sh) pads each onto a common 1500×760 canvas
 in the terminal's background colour, generates a title card per segment, and
-concatenates:
+concatenates. Re-running it after re-recording any segment rebuilds the whole
+video:
 
 ```bash
 bash screencast/build_demo.sh      # → demo.mp4

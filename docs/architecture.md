@@ -155,8 +155,10 @@ request can be attributed to a feature-store outage rather than the model.
 
 ## 6. Performance characteristics
 
-Measured on the full stack, direct to the API (n=5000): **p50 0.50 ms · p95 1.42
-ms · p99 3.24 ms · 1497 req/s · 0 errors**, against a 100 ms requirement.
+Measured on the full stack, direct to the API (n=5000): **p50 0.63 ms · p95 2.97
+ms · p99 3.95 ms · 1023 req/s · 0 errors**, against a 100 ms requirement. Median
+run of five with the stream live; run-to-run spread is wide (681–1178 req/s), so
+see the report's §P2 note on measurement conditions before quoting any of it.
 
 Profiling the hot path in isolation (`python -m scripts.profile_predict`) puts
 total application work at **0.143 ms p50** — Redis `GET` 0.049, model inference
@@ -168,7 +170,7 @@ application logic is ~20% of a request, and ~48% is FastAPI's per-request model
 machinery, dominated by `response_model` re-validating an already-constructed
 `FraudPrediction`. That pass can be removed with `response_model=None`, at the
 cost of `/predict`'s OpenAPI schema — quantified and deliberately declined,
-since 1.42 ms against a 100 ms budget is ~70× headroom and the schema is worth
+since 2.97 ms against a 100 ms budget is ~34× headroom and the schema is worth
 more than 0.2 ms.
 
 Redis is not the bottleneck and is unlikely to become one soon: retrieval

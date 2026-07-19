@@ -223,7 +223,7 @@ document at `/docs`, so they cannot drift apart.
 was measured: the first `joblib.load` takes **≈470 ms** — mostly importing
 scikit-learn's unpickling machinery — and later loads **0.11 ms**. Per-request
 loading would make each container's first request absorb 470 ms and every later
-one still pay 0.11 ms (22% of a 0.50 ms p50) for invariant work;
+one still pay 0.11 ms (17% of a 0.63 ms p50) for invariant work;
 `--start-period=10s` covers the startup cost. `/model/info` returns
 `sklearn-logreg-v1`, confirming the trained artifact, not the fallback.
 
@@ -394,16 +394,31 @@ targets per-request work. Every figure below is a median of repeated runs.
 | ---------- | ---------- |
 | Requests   | 5000       |
 | Errors     | **0**      |
-| Throughput | 1497 req/s |
-| p50        | 0.50 ms    |
-| p95        | 1.42 ms    |
-| p99        | 3.24 ms    |
-| max        | 5.47 ms    |
+| Throughput | 1023 req/s |
+| p50        | 0.63 ms    |
+| p95        | 2.97 ms    |
+| p99        | 3.95 ms    |
+| max        | 6.51 ms    |
 
-**Table 9** — Load-test results (`results.json`); median of three runs, spread
-1392–1571 req/s and p95 1.27–1.49 ms, zero errors throughout.
+**Table 9** — Load-test results (`results.json`), direct to the API with the
+transaction stream live. This is the median run of five; the figures quoted are
+that run's, so the committed artifact and this table are the same measurement
+rather than a per-metric composite. Spread across the five: 681–1178 req/s,
+p95 2.37–3.85 ms, **zero errors in all five**.
 
-**p95 of 1.42 ms against the 100 ms requirement is roughly 70× headroom.**
+**p95 of 2.97 ms against the 100 ms requirement is roughly 34× headroom.**
+
+**On measurement conditions.** That spread is wide, and worth stating plainly
+rather than hiding behind a median. Throughput varies by ~1.7× run to run on an
+otherwise idle developer machine, so any single figure here should be read as an
+order of magnitude, not a benchmark. Two conditions were measured separately:
+with the simulator producing (above) and with it stopped, which gives 1234 req/s
+and p95 2.71 ms. The live-stream numbers are quoted as the headline because a
+continuously fed stream is the system's intended operating condition, and it is
+the more conservative of the two. Earlier drafts of this report cited 1497 req/s
+and p95 1.42 ms from a quieter machine; those were not reproducible across
+thirteen runs today and have been replaced rather than kept because they
+flattered the result.
 
 §B3's blue-green figures (p50 1.14 / p95 3.28 at 720 req/s) are worse on every
 axis because that run went **through the nginx proxy**, whereas Table 9 is
@@ -468,7 +483,9 @@ terms equally.
 **The hypothesis is not supported.** Removing response validation produced no
 measurable improvement — the optimized build measured marginally slower, within
 run-to-run variation. The load harness could not resolve any difference either
-(1392–1571 vs 1048–1558 req/s, overlapping ranges).
+(overlapping throughput ranges); given the ~1.7× run-to-run spread documented in
+§P2, it never could have — the effect being sought was far smaller than the
+noise floor of the instrument used to look for it.
 
 **Why the original estimate was wrong is the more useful finding.** The 0.509 ms
 gap came from a single measurement taken earlier under different machine load.
@@ -484,7 +501,7 @@ nothing in return. The remaining 0.168 ms is genuine framework overhead but
 *distributed* across body parsing, dependency resolution, validation and
 serialisation, not concentrated in one removable component — which is precisely
 why the flag did nothing. Reducing it further would need a different framework
-or serialisation strategy; at 70× headroom there is no case for that.
+or serialisation strategy; at ~34× headroom there is no case for that.
 
 ---
 

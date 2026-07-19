@@ -99,17 +99,35 @@ Legend: ✅ done · 🟡 partial/needs fix · ❌ missing
   `transaction_count` and `avg_amount`. **RESOLVED (2026-07-15) → allowed to
   add extra keys** (e.g. `last_amount`, `max_amount`) as long as those two keys
   keep their exact fixture values; the model only consumes `FEATURE_ORDER`.
-- **D4 — Screencast is 2:08, the prompt says 3–5 minutes. Pad it?** The four
-  required beats run 76 s; two further *real* segments (degradation, hardening +
-  tests) brought it to 127.5 s. Reaching 3 min would mean inserting dead air,
-  slowing typing speed, or holding static frames. **RESOLVED (2026-07-19) → ship
-  at 2:08 and don't pad.** Every required beat is present and each segment is a
-  genuine run; artificial delay would dilute density without adding evidence, and
-  a grader skimming for the four beats finds them faster. If more length is
-  wanted, the honest lever is *more demonstrated behaviour* (e.g. `/predict_batch`
-  showing one `MGET` for five transactions, or a rebalance with a second
-  processor), not slower playback. ⚠️ Flagged for the user — this is a knowing
-  deviation from a stated spec, not an oversight.
+- **D4 — Screencast length vs the prompt's 3–5 minutes.** The four required
+  beats run only 76 s. **RESOLVED (2026-07-19, user directed) → close the gap
+  with real content, not dead air.** Grew to **nine** segments: 6 graceful
+  degradation, 7 hardening + tests, 8 `/predict_batch` one-MGET proof, 9 hot-path
+  profile. Final **183.7 s (3:04), 796 KB**. Honest accounting of where the
+  length came from: segments 6–9 are genuine runs and supply ~107 s of it;
+  typing speed 30→50 ms added only **~5 s** across all segments (short commands —
+  it barely moves the needle); the last ~9 s came from lengthening title cards
+  2.5 s → 3.5 s, which is presentation, not evidence. Without the card change the
+  video is 2:55. If it ever needs to be shorter, cut card time first.
+
+- **D5 — The report's headline performance figures were not reproducible.**
+  Discovered 2026-07-19 while committing: `results.json` disagreed with the
+  report, and had done *before* today. Root cause is structural — **segment 5 of
+  the screencast runs the load harness, which overwrites `results.json` by
+  default**, so every recording silently replaced the committed artifact the
+  report cites. **RESOLVED (2026-07-19, user directed) → re-measure and update
+  everything together.** 13 runs across 3 conditions; the old 1497 req/s /
+  p95 1.42 ms never reappeared. New headline **1023 req/s · p50 0.63 · p95 2.97 ·
+  p99 3.95 · max 6.51 · 0 errors** (~34× headroom, was claimed as 70×). Two
+  guards added: the tape now passes `--out /tmp/demo_results.json` so recording
+  can never clobber the artifact, and `results.json` holds **one real run** (the
+  median-throughput run of five) rather than a per-metric composite, so artifact
+  and Table 9 are literally the same measurement.
+  **The more useful finding is the variance.** Throughput swings ~1.7× run to run
+  (681–1178 req/s) on an idle machine. This retroactively strengthens 12.4: the
+  `response_model` A/B was hunting an effect far below the noise floor of the
+  instrument. §P2 now documents both measurement conditions (stream live vs
+  simulator stopped) instead of quoting a single number as if it were stable.
 
 ## Pinned facts (don't re-derive)
 
@@ -511,19 +529,19 @@ _Pinned constraints (don't rediscover):_
 - Segment 2's `kafka-consumer-groups.sh --describe` is the same command as
   **10.3** — capture once, use for both.
 
-- [x] **14.1** Write the `.tape` files. Grew from four to **seven** — the four
-      required beats totalled only 76 s, so two content segments were added
-      (6 graceful degradation · 7 container hardening + tests) rather than
-      padding with artificial delay. _Check:_ each tape renders an MP4 + GIF
-      that plays. ✅
-- [x] **14.2** Record segments 1–7. _Check:_ all four required beats visibly
-      present; segment 3 shows a latency number on screen. ✅
+- [x] **14.1** Write the `.tape` files. Grew from four to **nine** (see D4).
+      Typing speed standardised at 50 ms. _Check:_ each tape renders an MP4 +
+      GIF that plays. ✅
+- [x] **14.2** Record segments 1–9, all re-recorded at 50 ms in one pass.
+      _Check:_ all four required beats visibly present; segment 3 shows a
+      latency number on screen. ✅ Fresh blue-green take is also cleaner than
+      the old one: **1,838 requests, 0 non-200, blue 1,042 / green 796, PASS**.
 - [x] **14.3** Concatenate to `demo.mp4` via `screencast/build_demo.sh` —
       pads each segment onto a common 1500×760 canvas (concat demuxer requires
       identical dimensions) and inserts a generated title card per segment.
-      _Check:_ single file, **127.5 s / 604 KB**, decodes clean, all beats
-      present. ✅ **Under the 3–5 min expectation — see decision below.**
-- [x] **14.4** Write `screencast/README.md` — seven commentary sections, GIF
+      _Check:_ single file, **183.7 s (3:04) / 796 KB**, decodes clean, all
+      beats present, inside the 3–5 min expectation. ✅
+- [x] **14.4** Write `screencast/README.md` — nine commentary sections, GIF
       previews + MP4 links, closing "how these were made" note pointing at the
       tapes. _Check:_ renders correctly **on GitHub** (verify after push; local
       preview lies about video). ⚠️ written; GitHub render unverified until
@@ -1465,3 +1483,46 @@ gets tight, the cut order above is the fallback.
   Also captured `docs/figures/degradation.png` from segment 6.
   Next: **14.6** (Canvas channel — user's call), **13.2** (page trim, still
   ~10.3pp vs a 7pp target), **13.4** (PDF export, user-side), then **15**.
+
+- 2026-07-19 — **Screencast extended to nine segments, 3:04 — clears the
+  prompt's 3–5 min window.** User asked for a `/predict_batch` segment and a
+  slower typing speed.
+  **Segment 8 (`scripts/demo_batch.sh` + `scripts/_fmt_batch.py`)** proves the
+  one-MGET claim instead of asserting it: `redis-cli config resetstat`
+  immediately before the request, so `INFO commandstats` afterwards is
+  attributable to this batch alone — **`cmdstat_mget:calls=1`, zero GETs** for 5
+  transactions across 3 customers. Added a note in the output that `latency_ms`
+  accumulates (elapsed since batch start), since the rising numbers otherwise
+  read as a slowdown.
+  **Segment 9 (`scripts/demo_profile.sh`)** puts the P3 bottleneck evidence on
+  screen — it was the report's central performance argument and was missing from
+  the video entirely. stderr is dropped (2000 log lines) but logging stays *on*,
+  because that cost is one of the stages being measured.
+  **Typing speed 30→50 ms bought ~5 s total** — commands are short, so this was
+  nearly a no-op, as expected. Recorded here so it isn't retried as a length
+  lever. The final ~9 s came from title cards 2.5→3.5 s; see D4 for the honest
+  split between content and presentation.
+  Re-recording preconditions worth pinning: **segment 1 needs `simulator` up**
+  (it exits after backfill, and the shot claims five services) and **segment 4
+  needs the blue-green stack up** (`docker compose -f
+  deployment/docker-compose.blue-green.yml up -d`, wait for :8001/:8002/:8080).
+  Next: **14.6** (Canvas channel — user's call), **13.2** (page trim, ~10.3pp vs
+  7pp target), **13.4** (PDF export, user-side), then **15**.
+
+- 2026-07-19 — **Caught a live inconsistency in the graded numbers; re-measured
+  and resynced everything.** See **D5** for the full account. Short version:
+  `results.json` (1231 req/s) contradicted the report (1497 req/s) *before* this
+  session, because recording screencast segment 5 overwrites it. Re-measured 13
+  times; the report's figures were a quiet-machine best case and are gone.
+  Everything now agrees: `results.json` = report Table 9 = README table =
+  architecture.md §6 = **1023 req/s · p50 0.63 · p95 2.97 · p99 3.95 · max 6.51**.
+  The re-recorded segment 5 independently shows **1010 req/s / p95 2.86**, which
+  corroborates the median rather than contradicting it.
+  **P9 (new, for the user):** `deployment/nginx/nginx.conf` is modified in the
+  working tree — the recorded cutover flipped ACTIVE from green to blue. That is
+  a real config change, not noise; decide whether blue-as-active is the intended
+  committed state before 15.1. `nginx.conf.bak` is also dirty.
+  ⚠️ Report gained ~120 words in §P2 for the measurement-conditions note, which
+  works against 13.2's trim target — but the note is load-bearing for honesty, so
+  trim elsewhere.
+  Next: **13.2** (page trim), **14.6** (Canvas channel), **13.4** (PDF), **15**.

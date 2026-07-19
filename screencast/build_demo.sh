@@ -23,7 +23,7 @@ BG=0x1e1e2e          # Catppuccin Mocha base — matches the recordings
 FG=0xcdd6f4          # Catppuccin Mocha text
 ACCENT=0x89b4fa      # Catppuccin Mocha blue
 FONT=/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
-CARD_SECS=2.5
+CARD_SECS=3.5
 
 # segment file | title | subtitle
 segments=(
@@ -34,6 +34,8 @@ segments=(
   "segment5-performance.mp4|5. Performance|5000 requests against a 100 ms budget"
   "segment6-resilience.mp4|6. Graceful degradation|Redis dies, the API keeps answering"
   "segment7-container-tests.mp4|7. Hardening and tests|non-root, healthy, 7 passing"
+  "segment8-batch.mp4|8. Batch scoring|five transactions, one Redis round-trip"
+  "segment9-profile.mp4|9. Where the time goes|framework-bound, not compute-bound"
 )
 
 card() {   # card <index> <title> <subtitle>
