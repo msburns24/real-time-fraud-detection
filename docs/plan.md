@@ -418,7 +418,7 @@ early, pull stills from the video instead (`ffmpeg -ss <t> -i segN.mp4
       `HEALTHCHECK` via `urllib` (no `curl` in slim), compose
       `service_healthy` gating, `healthcheck: {disable: true}` on the non-HTTP
       services. _Check:_ each choice stated with its failure mode.
-- [ ] **11.4** _(B3 evidence, up to −10 if missing)_ **Capture screenshots** —
+- [x] **11.4** _(B3 evidence, up to −10 if missing)_ **Capture screenshots** —
       none exist in the repo today. Needed: the blue-green swap, `docker compose
       ps` all-healthy, a `/predict` response. See the ordering note above.
       _Check:_ images committed and referenced from the report.
@@ -1392,3 +1392,31 @@ gets tight, the cut order above is the fallback.
   Windows/Word for final formatting anyway.
   Next: **11.4** (screenshots) + **Phase 14** (screencast) — all remaining work
   needs the stack recorded live.
+- 2026-07-19 — **11.4 done, and it front-loaded most of Phase 14.** Captured
+  three figures by having **VHS run the real commands** and extracting stills
+  with `ffmpeg -sseof`, so every screenshot is genuine output, not a mock-up:
+  `docs/figures/blue-green-swap.png` · `stack-healthy.png` ·
+  `predict-response.png`. Embedded as Figures 3–5.
+  **Rebuilt `scripts/bg_demo.sh`** (the 6.2 original lived in a session-only
+  scratchpad and was gone) with per-colour accounting from container access
+  logs, and a `PASS`/`INCONCLUSIVE` verdict that fails loudly when only one
+  colour served — encoding the 6.2 lesson into the tool so the false positive
+  cannot recur silently.
+  **Fresh evidence, better than 6.2's:** Run A green→blue, 1,559 requests,
+  **0 non-200**, blue 971 / green 588. Run B blue→green (**the rollback**),
+  1,918 requests, **0 non-200**, blue 769 / green 1,149. Report now shows both
+  directions, so rollback is demonstrated rather than asserted. Kept the older
+  60,000-request run for the 1-error keep-alive detail.
+  **Video sizing concern resolved empirically — it was unfounded.** A 31-second
+  1500×760 recording is **225 kB** MP4 / 121 kB GIF; terminal content is almost
+  entirely static and compresses enormously. A full 4-segment screencast will be
+  low single-digit MB, nowhere near Canvas or GitHub's 100 MB limits, so
+  **zipping is unnecessary** (and would save ~0% on already-compressed MP4).
+  Tooling notes for Phase 14: **VHS's parser rejects embedded quotes and
+  `{{...}}`** (37 parse errors) — put anything complex in a shell script and have
+  the tape call it. `docker compose ps` is too wide to read at screencast font
+  sizes; use `scripts/demo_status.sh`. New helper scripts: `demo_status.sh`,
+  `demo_predict.sh`, `bg_demo.sh`. Tapes live in `screencast/tapes/`.
+  Also restarted `simulator` so the status shot evidences all **five** services.
+  ⚠️ Page estimate rose to **~10.3pp** with figures — 13.2's trim list still
+  applies. Next: **Phase 14** (14.1 remaining tapes → 14.6), then **15**.

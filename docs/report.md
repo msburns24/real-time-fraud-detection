@@ -208,6 +208,11 @@ round-trip dominating this entirely.
 
 **Table 6** — API surface.
 
+![Live prediction](figures/predict-response.png)
+
+**Figure 5** — A scored transaction: $4,000 online against a customer whose
+recent average is ~$125, returning `fraud_probability: 1.0` in 0.49 ms.
+
 **Validation is schema-driven.** `Transaction` and `FraudPrediction` are Pydantic
 models, so FastAPI rejects malformed input at the boundary with HTTP 422 and a
 machine-readable body — verified for both a missing field and a wrong type. The
@@ -270,6 +275,10 @@ because **`python:3.11-slim` ships no `curl`** — the conventional probe would
 fail with "command not found" and report `unhealthy` forever while the service
 served traffic normally.
 
+![Full stack healthy](figures/stack-healthy.png)
+
+**Figure 4** — `docker compose up` brings up all five services.
+
 Compose gates application services on `depends_on: service_healthy`, not
 `service_started` (which asserts only that a container was created). One
 subtlety: `feature-processor` and `simulator` share the image and inherit its
@@ -296,20 +305,29 @@ not an outage. **Rollback is the same command**, so that path cannot rot.
 old ones drain. Keep-alive connections are **not** pinned to draining workers —
 those close idle connections and clients reconnect onto the new colour.
 
-| Measurement                       | Result                            |
-| --------------------------------- | --------------------------------- |
-| Requests served by blue           | 17,809                            |
-| Requests served by green          | 42,330                            |
-| Errors (harness, 60,000 requests) | **1** (0.002%)                    |
-| New-connection probe              | **0** non-200 of 140              |
-| Latency through nginx             | p50 1.14 / p95 3.28 / p99 4.78 ms |
+![Blue-green cutover under load](figures/blue-green-swap.png)
 
-**Table 7** — Cutover under continuous load.
+**Figure 3** — `scripts/bg_demo.sh`: 20 s of continuous load against `:8080`
+with the switch fired at 8 s.
 
-The single error is the keep-alive close race described above, consistent with
-the independent probe seeing zero failures. **The per-colour counts are the
+| Measurement          | Run A (green → blue) | Run B (blue → green, rollback) |
+| -------------------- | -------------------- | ------------------------------ |
+| Requests sent        | 1,559                | 1,918                          |
+| Non-200 responses    | **0**                | **0**                          |
+| Served by blue       | 971                  | 769                            |
+| Served by green      | 588                  | 1,149                          |
+
+**Table 7** — Two cutovers under continuous load, in opposite directions.
+
+Run B is the rollback: re-running the same script switched back, confirming the
+rollback path works and is not merely asserted. **The per-colour counts are the
 proof, not the error count** — both being non-zero can only be produced by
 traffic actually moving mid-run.
+
+An earlier, longer run through the harness measured p50 1.14 / p95 3.28 / p99
+4.78 ms at 720 req/s with **1 error in 60,000** (0.002%) — the keep-alive close
+race described above, corroborated by an independent new-connection probe seeing
+0 failures in 140 requests.
 
 #### B3.1 A silent failure in the provided switch script
 
