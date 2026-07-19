@@ -10,6 +10,11 @@ requirement — roughly 70× headroom. Numbers and method in
 [Performance](#performance); design rationale, failure modes and known
 limitations in [docs/architecture.md](docs/architecture.md).
 
+**See it running:** [`screencast/demo.mp4`](screencast/demo.mp4) — a 2-minute
+recorded tour of the live stack (streaming, scoring, blue-green cutover under
+load, performance run, Redis failure and recovery). Per-segment videos and
+commentary in [screencast/](screencast/).
+
 ```
                   ┌──────────────────┐
                   │    simulator     │  produces transactions (+24h backfill)
