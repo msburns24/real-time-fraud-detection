@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="1900"
+   height="900"
+   viewBox="0 0 1900 900"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   sodipodi:docname="figure-1-transaction-flow.svg"
+   inkscape:export-filename="figure-1-transaction-flow.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="px"
+     showgrid="false"
+     showguides="true"
+     inkscape:zoom="0.6607029"
+     inkscape:cx="805.20307"
+     inkscape:cy="519.14408"
+     inkscape:window-width="2560"
+     inkscape:window-height="1354"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg5" />
+  <defs
+     id="defs2">
+    <marker
+       style="overflow:visible"
+       id="TriangleStart"
+       refX="0"
+       refY="0"
+       orient="auto-start-reverse"
+       inkscape:stockid="TriangleStart"
+       markerWidth="5.3244081"
+       markerHeight="6.155385"
+       viewBox="0 0 5.3244081 6.1553851"
+       inkscape:isstock="true"
+       inkscape:collect="always"
+       preserveAspectRatio="xMidYMid">
+      <path
+         transform="scale(0.5)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 5.77,0 -2.88,5 V -5 Z"
+         id="path135" />
+    </marker>
+  </defs>
+  <rect
+     style="fill:#1e1e2e;fill-opacity:1;stroke-width:3.78225"
+     id="rect184"
+     width="1900"
+     height="900"
+     x="0"
+     y="0" />
+  <g
+     id="g8720"
+     transform="matrix(0.85108197,0,0,0.85108197,-18.401613,-19.658193)">
+    <g
+       id="g5447"
+       transform="matrix(0.73195434,0,0,0.73195434,10.173437,36.541067)">
+      <rect
+         style="fill:#89b4fa;fill-opacity:1;stroke-width:4.67847"
+         id="rect5317"
+         width="402.35922"
+         height="279.36029"
+         x="138.03653"
+         y="136.32404" />
+      <text
+         xml:space="preserve"
+         style="font-size:63.0149px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:2.73393"
+         x="171.81746"
+         y="266.27631"
+         id="text5373"><tspan
+           sodipodi:role="line"
+           x="171.81746"
+           y="266.27631"
+           id="tspan5375"
+           style="stroke-width:2.73393">Simulator</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:44.8111px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:1.94415"
+         x="335.24695"
+         y="322.55899"
+         id="text5381"><tspan
+           sodipodi:role="line"
+           x="335.24695"
+           y="322.55899"
+           id="tspan5379"
+           style="text-align:center;text-anchor:middle;stroke-width:1.94415">(producer)</tspan></text>
+    </g>
+    <g
+       id="g5461"
+       transform="matrix(0.73195434,0,0,0.73195434,693.14861,29.871137)">
+      <rect
+         style="fill:#a6e3a1;fill-opacity:1;stroke-width:4.67847"
+         id="rect5449"
+         width="402.35922"
+         height="279.36029"
+         x="138.03653"
+         y="136.32404" />
+      <text
+         xml:space="preserve"
+         style="font-size:63.0149px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:2.73393"
+         x="335.24698"
+         y="266.27631"
+         id="text5453"><tspan
+           sodipodi:role="line"
+           x="335.24698"
+           y="266.27631"
+           id="tspan5451"
+           style="text-align:center;text-anchor:middle;stroke-width:2.73393">Kafka</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:44.8111px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:1.94415"
+         x="335.24695"
+         y="322.55899"
+         id="text5457"><tspan
+           sodipodi:role="line"
+           x="335.24695"
+           y="322.55899"
+           id="tspan5455"
+           style="text-align:center;text-anchor:middle;stroke-width:1.94415">(broker)</tspan></text>
+    </g>
+    <g
+       id="g5539"
+       transform="matrix(0.73195434,0,0,0.73195434,779.38925,36.541067)">
+      <rect
+         style="fill:#89b4fa;fill-opacity:1;stroke-width:6.30541"
+         id="rect5513"
+         width="730.85779"
+         height="279.36029"
+         x="1035.2562"
+         y="136.32404" />
+      <text
+         xml:space="preserve"
+         style="font-size:63.0149px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:2.73393"
+         x="1396.7159"
+         y="266.27631"
+         id="text5517"><tspan
+           sodipodi:role="line"
+           x="1396.7159"
+           y="266.27631"
+           id="tspan5515"
+           style="text-align:center;text-anchor:middle;stroke-width:2.73393">feature-processor</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:44.8111px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:1.94415"
+         x="1396.7159"
+         y="322.55899"
+         id="text5521"><tspan
+           sodipodi:role="line"
+           x="1396.7159"
+           y="322.55899"
+           id="tspan5519"
+           style="text-align:center;text-anchor:middle;stroke-width:1.94415">(rolling window)</tspan></text>
+    </g>
+    <g
+       id="g5567"
+       transform="translate(241.8168,113.47916)">
+      <rect
+         style="fill:#a6e3a1;fill-opacity:1;stroke-width:3.77331"
+         id="rect5541"
+         width="357.57626"
+         height="204.47897"
+         x="1381.1166"
+         y="475.24817" />
+      <text
+         xml:space="preserve"
+         style="font-size:46.124px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:2.00111"
+         x="1556.9996"
+         y="570.36731"
+         id="text5545"><tspan
+           sodipodi:role="line"
+           x="1556.9996"
+           y="570.36731"
+           id="tspan5543"
+           style="text-align:center;text-anchor:middle;stroke-width:2.00111">Redis</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:32.7997px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:1.42303"
+         x="1556.9995"
+         y="611.56366"
+         id="text5549"><tspan
+           sodipodi:role="line"
+           x="1556.9995"
+           y="611.56366"
+           id="tspan5547"
+           style="text-align:center;text-anchor:middle;stroke-width:1.42303">(feature store)</tspan></text>
+    </g>
+    <g
+       id="g7033"
+       transform="translate(-506.76876,294.29198)">
+      <rect
+         style="fill:#a6e3a1;fill-opacity:1;stroke-width:3.77331"
+         id="rect7021"
+         width="357.57626"
+         height="204.47897"
+         x="1381.1166"
+         y="475.24817" />
+      <text
+         xml:space="preserve"
+         style="font-size:46.124px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:2.00111"
+         x="1556.9996"
+         y="570.36731"
+         id="text7025"><tspan
+           sodipodi:role="line"
+           x="1556.9996"
+           y="570.36731"
+           id="tspan7023"
+           style="text-align:center;text-anchor:middle;stroke-width:2.00111">FastAPI</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:32.7997px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:1.42303"
+         x="1556.9995"
+         y="611.56366"
+         id="text7029"><tspan
+           sodipodi:role="line"
+           x="1556.9995"
+           y="611.56366"
+           id="tspan7027"
+           style="text-align:center;text-anchor:middle;stroke-width:1.42303">merge + scope</tspan></text>
+    </g>
+    <g
+       id="g7062"
+       transform="translate(-62.45731,43.687157)">
+      <rect
+         style="fill:#89b4fa;fill-opacity:1;stroke-width:2.47821"
+         id="rect7035"
+         width="269.32501"
+         height="117.10474"
+         x="183.3537"
+         y="588.72729" />
+      <text
+         xml:space="preserve"
+         style="font-size:46.124px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';fill:#ffffff;fill-opacity:1;stroke-width:2.00111"
+         x="318.51169"
+         y="664.21582"
+         id="text7039"><tspan
+           sodipodi:role="line"
+           x="318.51169"
+           y="664.21582"
+           id="tspan7037"
+           style="text-align:center;text-anchor:middle;stroke-width:2.00111">Client</tspan></text>
+    </g>
+    <g
+       id="g8180">
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="604.70966"
+         y="212.14874"
+         id="text7805"><tspan
+           sodipodi:role="line"
+           id="tspan7803"
+           x="604.70966"
+           y="212.14874"
+           style="stroke-width:1.59163">transactions</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="604.70966"
+         y="282.56787"
+         id="text7809"><tspan
+           sodipodi:role="line"
+           id="tspan7807"
+           x="604.70966"
+           y="282.56787"
+           style="stroke-width:1.59163">key = customer_id</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="604.70966"
+         y="325.53488"
+         id="text7813"><tspan
+           sodipodi:role="line"
+           id="tspan7811"
+           x="604.70966"
+           y="325.53488"
+           style="stroke-width:1.59163">3 partitions</tspan></text>
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223;marker-end:url(#TriangleStart)"
+         d="M 405.71845,231.8936 H 778.18326"
+         id="path7893" />
+    </g>
+    <g
+       id="g8139">
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="1311.5951"
+         y="212.14874"
+         id="text7817"><tspan
+           sodipodi:role="line"
+           id="tspan7815"
+           x="1311.5951"
+           y="212.14874"
+           style="stroke-width:1.59163">consumer group</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="1311.5951"
+         y="282.56787"
+         id="text7821"><tspan
+           sodipodi:role="line"
+           id="tspan7819"
+           x="1311.5951"
+           y="282.56787"
+           style="stroke-width:1.59163">&quot;feature processor&quot;</tspan></text>
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.67142;marker-end:url(#TriangleStart)"
+         d="m 1088.6936,231.8936 h 433.0719"
+         id="path8116" />
+    </g>
+    <g
+       id="g8508">
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="1802.0708"
+         y="461.11606"
+         id="text7825"><tspan
+           sodipodi:role="line"
+           id="tspan7823"
+           x="1802.0708"
+           y="461.11606"
+           style="stroke-width:1.59163">SET features: {customer_id} EX 48h</tspan></text>
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223;marker-end:url(#TriangleStart)"
+         d="m 1801.7215,483.02243 v 90.32083"
+         id="path8157"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223"
+         d="m 1801.7215,340.80301 v 78.57334"
+         id="path8298"
+         sodipodi:nodetypes="cc" />
+    </g>
+    <g
+       id="g8484">
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="1432.6071"
+         y="884.4978"
+         id="text7829"><tspan
+           sodipodi:role="line"
+           id="tspan7827"
+           x="1432.6071"
+           y="884.4978"
+           style="stroke-width:1.59163">GET/MGET</tspan></text>
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223"
+         d="m 1801.7215,793.2063 v 78.57334"
+         id="path8316"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223;marker-end:url(#TriangleStart)"
+         d="m 1337.629,871.77964 h -90.3208"
+         id="path8326"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223"
+         d="m 1803.8876,871.77964 -273.8387,-2e-5"
+         id="path8340"
+         sodipodi:nodetypes="cc" />
+    </g>
+    <g
+       id="g8553">
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="526.73932"
+         y="885.25018"
+         id="text7833"><tspan
+           sodipodi:role="line"
+           id="tspan7831"
+           x="526.73932"
+           y="885.25018"
+           style="stroke-width:1.59163">FraudPrediction</tspan></text>
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:6.4734"
+         d="M 874.34782,871.77964 H 698.91261"
+         id="path8350"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.6891"
+         d="M 359.35583,871.77965 H 255.55889"
+         id="path8358"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.22074;marker-end:url(#TriangleStart)"
+         d="M 255.55889,874.1242 V 764.12161"
+         id="path8368"
+         sodipodi:nodetypes="cc" />
+    </g>
+    <g
+       id="g8532">
+      <text
+         xml:space="preserve"
+         style="font-size:36.6857px;font-family:'CaskaydiaCove Nerd Font';-inkscape-font-specification:'CaskaydiaCove Nerd Font';text-align:center;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:1.59163"
+         x="736.95557"
+         y="701.26678"
+         id="text7837"><tspan
+           sodipodi:role="line"
+           id="tspan7835"
+           x="736.95557"
+           y="701.26678"
+           style="stroke-width:1.59163">POST /predict</tspan></text>
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:6.72922"
+         d="M 579.79698,690.96684 H 390.2214"
+         id="path8380"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:4.33223;marker-end:url(#TriangleStart)"
+         d="m 889.889,690.96682 h 717.6603"
+         id="path8390"
+         sodipodi:nodetypes="cc" />
+    </g>
+  </g>
+</svg>
