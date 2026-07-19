@@ -1,6 +1,6 @@
 # Hot-path profile — where the latency budget actually goes.
-Output screencast/segment9-profile.mp4
-Output screencast/segment9-profile.gif
+Output demo/segments/segment9-profile.mp4
+Output demo/segments/segment9-profile.gif
 
 Set FontSize 15
 Set Width 1500

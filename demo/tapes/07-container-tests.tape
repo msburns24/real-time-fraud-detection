@@ -1,6 +1,6 @@
 # Container hardening + test suite.
-Output screencast/segment7-container-tests.mp4
-Output screencast/segment7-container-tests.gif
+Output demo/segments/segment7-container-tests.mp4
+Output demo/segments/segment7-container-tests.gif
 
 Set FontSize 15
 Set Width 1500

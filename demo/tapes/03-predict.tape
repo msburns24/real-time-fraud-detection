@@ -1,5 +1,5 @@
-Output screencast/segment3-predict.mp4
-Output screencast/segment3-predict.gif
+Output demo/segments/segment3-predict.mp4
+Output demo/segments/segment3-predict.gif
 
 Set FontSize 15
 Set Width 1500

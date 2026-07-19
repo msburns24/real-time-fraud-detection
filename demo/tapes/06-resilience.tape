@@ -1,6 +1,6 @@
 # Graceful degradation — Redis stopped mid-demo, /predict stays up.
-Output screencast/segment6-resilience.mp4
-Output screencast/segment6-resilience.gif
+Output demo/segments/segment6-resilience.mp4
+Output demo/segments/segment6-resilience.gif
 
 Set FontSize 15
 Set Width 1500

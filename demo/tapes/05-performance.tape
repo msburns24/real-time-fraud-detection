@@ -1,5 +1,5 @@
-Output screencast/segment5-performance.mp4
-Output screencast/segment5-performance.gif
+Output demo/segments/segment5-performance.mp4
+Output demo/segments/segment5-performance.gif
 
 Set FontSize 15
 Set Width 1500

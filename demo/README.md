@@ -13,7 +13,7 @@ renders inline on GitHub and an MP4 for playback.
 
 ## 1. The stack
 
-![stack](segment1-stack.gif)
+![stack](segments/segment1-stack.gif)
 
 Five services up, all healthy. The interesting part is the *ordering*: Kafka and
 Redis carry health checks, and the API and processor declare
@@ -24,7 +24,7 @@ Redis call and stays up looking fine.
 
 ## 2. Streaming
 
-![streaming](segment2-streaming.gif)
+![streaming](segments/segment2-streaming.gif)
 
 The `transactions` topic has 3 partitions, all assigned to the single
 `feature-processor` consumer, with lag moving as the simulator produces. Then a
@@ -39,7 +39,7 @@ customer's window state across consumers.
 
 ## 3. Scoring
 
-![predict](segment3-predict.gif)
+![predict](segments/segment3-predict.gif)
 
 The same customer, two transactions. A $130 grocery purchase scores 0.0; a
 $4,000 online purchase scores 1.0. The point is that the verdict comes from the
@@ -50,7 +50,7 @@ flag as bound fields.
 
 ## 4. Blue-green deployment
 
-![blue-green](segment4-blue-green.gif)
+![blue-green](segments/segment4-blue-green.gif)
 
 Continuous load against the stable `:8080` endpoint, with the traffic switch
 fired eight seconds in. The per-colour request counts are the evidence, and they
@@ -61,7 +61,7 @@ The script says so itself, printing `PASS` or `INCONCLUSIVE`.
 
 ## 5. Performance
 
-![performance](segment5-performance.gif)
+![performance](segments/segment5-performance.gif)
 
 5,000 requests against the full stack, zero errors, against a 100 ms
 requirement — roughly 34× headroom at p95. These are cache *hits*, verified
@@ -78,7 +78,7 @@ replace the committed artifact the report cites.
 
 ## 6. Graceful degradation
 
-![resilience](segment6-resilience.gif)
+![resilience](segments/segment6-resilience.gif)
 
 Redis is stopped mid-demo and the same $130 request is replayed. It still
 returns 200 — but it now scores **1.0 instead of 0.0**, because there is no
@@ -92,7 +92,7 @@ reconnects on demand.
 
 ## 7. Hardening and tests
 
-![container](segment7-container-tests.gif)
+![container](segments/segment7-container-tests.gif)
 
 Straight from the Docker daemon: the container runs as `appuser`, not root, and
 its `HEALTHCHECK` reports `healthy` — a check implemented with
@@ -101,7 +101,7 @@ test suite, 7 passing.
 
 ## 8. Batch scoring
 
-![batch](segment8-batch.gif)
+![batch](segments/segment8-batch.gif)
 
 Five transactions spanning three customers, scored in one request. The claim
 worth proving is that this costs the feature store **one** round-trip rather
@@ -114,7 +114,7 @@ since the batch began, not per-item scoring cost.
 
 ## 9. Where the time goes
 
-![profile](segment9-profile.gif)
+![profile](segments/segment9-profile.gif)
 
 The hot path profiled in isolation over 2,000 iterations: Redis `GET` ~0.05 ms,
 model inference ~0.06 ms, logging ~0.02 ms, validation and merge negligible —
@@ -136,7 +136,7 @@ Recorded with [VHS](https://github.com/charmbracelet/vhs). Each segment has a
 reproducibly:
 
 ```bash
-vhs screencast/tapes/06-resilience.tape
+vhs demo/tapes/06-resilience.tape
 ```
 
 The commands themselves live in `scripts/demo_*.sh` rather than inline in the
@@ -152,7 +152,7 @@ concatenates. Re-running it after re-recording any segment rebuilds the whole
 video:
 
 ```bash
-bash screencast/build_demo.sh      # → demo.mp4
+bash demo/build_demo.sh      # → demo.mp4
 ```
 
 The stack must be running (`docker compose up -d`) before recording or

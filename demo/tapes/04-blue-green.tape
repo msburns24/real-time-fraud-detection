@@ -1,6 +1,6 @@
 # Blue-green cutover under load — real run, real output.
-Output screencast/segment4-blue-green.mp4
-Output screencast/segment4-blue-green.gif
+Output demo/segments/segment4-blue-green.mp4
+Output demo/segments/segment4-blue-green.gif
 
 Set FontSize 15
 Set Width 1500

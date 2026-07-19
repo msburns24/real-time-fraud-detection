@@ -1,5 +1,5 @@
-Output screencast/segment2-streaming.mp4
-Output screencast/segment2-streaming.gif
+Output demo/segments/segment2-streaming.mp4
+Output demo/segments/segment2-streaming.gif
 
 Set FontSize 15
 Set Width 1500

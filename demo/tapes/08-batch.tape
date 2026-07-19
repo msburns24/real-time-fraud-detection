@@ -1,6 +1,6 @@
 # Batch scoring — one Redis round-trip for five transactions, verified.
-Output screencast/segment8-batch.mp4
-Output screencast/segment8-batch.gif
+Output demo/segments/segment8-batch.mp4
+Output demo/segments/segment8-batch.gif
 
 Set FontSize 15
 Set Width 1500

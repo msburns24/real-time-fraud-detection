@@ -9,11 +9,12 @@
 # Each segment is preceded by a generated title card so the video reads as a
 # guided tour rather than seven disconnected terminal clips.
 #
-# Usage:  bash screencast/build_demo.sh
+# Usage:  bash demo/build_demo.sh
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-OUT=screencast
+OUT=demo              # final demo.mp4 lands at the demo/ top level
+SEG=demo/segments     # individual recorded segments live in a subdir
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -69,7 +70,7 @@ drawtext=fontfile=$FONT:text='$sub':fontcolor=$FG:fontsize=28:x=(w-text_w)/2:y=(
 
 pad() {    # pad <index> <segment file>
   local out="$WORK/seg$1.mp4"
-  ffmpeg -v error -y -i "$OUT/$2" \
+  ffmpeg -v error -y -i "$SEG/$2" \
     -vf "pad=$W:$H:0:0:color=$BG" \
     -c:v libx264 -pix_fmt yuv420p -r 12 "$out"
   echo "file '$out'" >> "$WORK/list.txt"

@@ -1,5 +1,5 @@
-Output screencast/segment1-stack.mp4
-Output screencast/segment1-stack.gif
+Output demo/segments/segment1-stack.mp4
+Output demo/segments/segment1-stack.gif
 
 Set FontSize 15
 Set Width 1500
