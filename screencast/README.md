@@ -13,8 +13,6 @@ renders inline on GitHub and an MP4 for playback.
 
 ## 1. The stack
 
-[`segment1-stack.mp4`](segment1-stack.mp4)
-
 ![stack](segment1-stack.gif)
 
 Five services up, all healthy. The interesting part is the *ordering*: Kafka and
@@ -25,8 +23,6 @@ container to exist, which is how you get an API that boots, fails its first
 Redis call and stays up looking fine.
 
 ## 2. Streaming
-
-[`segment2-streaming.mp4`](segment2-streaming.mp4)
 
 ![streaming](segment2-streaming.gif)
 
@@ -43,8 +39,6 @@ customer's window state across consumers.
 
 ## 3. Scoring
 
-[`segment3-predict.mp4`](segment3-predict.mp4)
-
 ![predict](segment3-predict.gif)
 
 The same customer, two transactions. A $130 grocery purchase scores 0.0; a
@@ -56,8 +50,6 @@ flag as bound fields.
 
 ## 4. Blue-green deployment
 
-[`segment4-blue-green.mp4`](segment4-blue-green.mp4)
-
 ![blue-green](segment4-blue-green.gif)
 
 Continuous load against the stable `:8080` endpoint, with the traffic switch
@@ -68,8 +60,6 @@ Only both colours showing non-zero traffic proves the cutover landed mid-load.
 The script says so itself, printing `PASS` or `INCONCLUSIVE`.
 
 ## 5. Performance
-
-[`segment5-performance.mp4`](segment5-performance.mp4)
 
 ![performance](segment5-performance.gif)
 
@@ -88,8 +78,6 @@ replace the committed artifact the report cites.
 
 ## 6. Graceful degradation
 
-[`segment6-resilience.mp4`](segment6-resilience.mp4)
-
 ![resilience](segment6-resilience.gif)
 
 Redis is stopped mid-demo and the same $130 request is replayed. It still
@@ -104,8 +92,6 @@ reconnects on demand.
 
 ## 7. Hardening and tests
 
-[`segment7-container-tests.mp4`](segment7-container-tests.mp4)
-
 ![container](segment7-container-tests.gif)
 
 Straight from the Docker daemon: the container runs as `appuser`, not root, and
@@ -114,8 +100,6 @@ its `HEALTHCHECK` reports `healthy` — a check implemented with
 test suite, 7 passing.
 
 ## 8. Batch scoring
-
-[`segment8-batch.mp4`](segment8-batch.mp4)
 
 ![batch](segment8-batch.gif)
 
@@ -129,8 +113,6 @@ Note that `latency_ms` accumulates down the list — it measures elapsed time
 since the batch began, not per-item scoring cost.
 
 ## 9. Where the time goes
-
-[`segment9-profile.mp4`](segment9-profile.mp4)
 
 ![profile](segment9-profile.gif)
 
