@@ -4,17 +4,21 @@
 **Repository:** https://github.com/msburns24/real-time-fraud-detection \
 **Date:** July 19, 2026
 
+> Design rationale, failure modes and known limitations are developed at length
+> in [`docs/architecture.md`](architecture.md); the deployment strategy in
+> [`docs/blue_green_design.md`](blue_green_design.md). This report states the
+> decisions and the evidence for them.
+
 ---
 
 ## Part A — Streaming Pipeline & Feature Store
 
 ### A1. System architecture
 
-TrustBank's fraud detector is a five-service pipeline. A transaction simulator
-publishes events to Kafka; a feature processor consumes them, maintains a
-rolling per-customer window, and writes aggregates to Redis; a FastAPI service
-reads those aggregates, joins them with the incoming transaction, and returns a
-fraud score.
+A transaction simulator publishes to Kafka; a feature processor consumes the
+stream, maintains a rolling per-customer window, and writes aggregates to Redis;
+a FastAPI service reads those aggregates, merges them with the incoming
+transaction, and scores it.
 
 ```
  ┌───────────────┐  transactions   ┌───────────┐   consumer group    ┌────────────────────┐
@@ -25,174 +29,85 @@ fraud score.
                                                                                │
                                                         SET features:{customer_id} EX 48h
                                                                                │
-                                                                     ┌─────────▼──────────┐
-   client ──── POST /predict ──────────────────────────────────────▶ │       Redis        │
-      ▲                                                              │  (feature store)   │
-      │                          ┌────────────────────┐   GET/MGET   └─────────┬──────────┘
-      └──── FraudPrediction ─────┤    api (FastAPI)   │◀───────────────────────┘
-                                 │  merge + score     │
-                                 └────────────────────┘
+   ┌────────┐   POST /predict    ┌───────────────────┐    GET/MGET   ┌─────────▼──────────┐
+   │ client │ ──────────────────▶│   api (FastAPI)   │──────────────▶│       Redis        │
+   │        │ ◀──────────────────│   merge + score   │◀──────────────│  (feature store)   │
+   └────────┘   FraudPrediction  └───────────────────┘               └────────────────────┘
 ```
 
-**Figure 1** — Transaction flow. The two halves of the system communicate only
-through Redis; there is no synchronous path between the API and Kafka.
+**Figure 1** — Transaction flow. The two halves communicate only through Redis.
 
-#### The central design decision
+**The defining decision is that feature computation is decoupled from serving.**
+Nothing in the request path touches Kafka. The two workloads differ: scoring
+needs bounded, predictable latency, while feature computation is stateful,
+bursty and subject to consumer lag. Coupling them would merge the failure modes
+— a broker hiccup would become a serving outage, and consumer lag would surface
+as client latency. Separating them reduces the API's work to one Redis `GET`
+plus one model call, **0.12 ms combined** (§P3).
 
-The architecture's defining choice is that **feature computation is decoupled
-from model serving**, joined only by the feature store. Nothing in the request
-path touches Kafka.
+The cost is **feature staleness**: the API serves features as of the processor's
+last write, so a system needing read-your-writes consistency could not be built
+this way. For 24-hour aggregates it is immaterial, and the transaction's own
+attributes — which dominate the score — are always current. The decoupling also
+yields the key resilience property: the store is consulted, not depended upon,
+so its absence degrades accuracy rather than availability (§B1).
 
-The two workloads have genuinely different characteristics. Scoring must be
-fast and predictable, with latency bounded on every request. Feature
-computation is stateful, bursty, and inherently subject to consumer lag.
-Coupling them — having `/predict` aggregate a customer's recent history at
-request time — would put Kafka consumption inside the request path, and the two
-failure modes would merge: a broker hiccup would become a serving outage, and
-consumer lag would surface directly as client latency.
-
-Separating them collapses the API's work to a single Redis `GET` plus one model
-call, **measured at 0.13 ms combined** (§P3). The processor can lag, crash, or
-be redeployed without the API noticing, because the API never asks it for
-anything — it reads whatever was last written.
-
-The cost of this design is **feature staleness**. The API serves the features
-as of the processor's last write, not as of the current instant. That is a real
-trade and worth naming: a system requiring strict read-your-writes consistency
-between ingestion and scoring could not be built this way. For fraud scoring
-over 24-hour rolling aggregates it is immaterial — a transaction arriving
-seconds before the one being scored shifts a hundred-event average
-imperceptibly, and the transaction's _own_ attributes, which dominate the
-score, are always current because they come from the request itself.
-
-The decoupling also produces the system's most useful resilience property.
-Since the feature store is consulted rather than depended upon, its absence
-degrades the prediction instead of failing it — a Redis outage costs accuracy,
-not availability (§B1).
-
-#### Components
-
-| Service             | Responsibility                                          | Implementation                         |
-| ------------------- | ------------------------------------------------------- | -------------------------------------- |
-| `simulator`         | Produces transactions; replays 24h of backfill on start | `streaming/transaction_simulator.py`   |
-| `kafka`             | Durable, replayable, partitioned transaction log        | `docker-compose.yml`                   |
-| `feature-processor` | Consumes the topic, maintains windows, writes to Redis  | `streaming/feature_processor.py`       |
-| `redis`             | Feature store — the interface between the two halves    | `streaming/feature_store.py`           |
-| `api`               | Joins cached features with the request and scores it    | `api/main.py`, `api/fraud_detector.py` |
+| Service             | Responsibility                                          |
+| ------------------- | ------------------------------------------------------- |
+| `simulator`         | Produces transactions; replays 24h backfill on start    |
+| `kafka`             | Durable, replayable, partitioned transaction log        |
+| `feature-processor` | Consumes the topic, maintains windows, writes to Redis  |
+| `redis`             | Feature store — the interface between the two halves    |
+| `api`               | Joins cached features with the request and scores it    |
 
 **Table 1** — Service responsibilities.
 
-Two cross-cutting concerns are centralised rather than repeated. All
-configuration resolves through a single frozen `Settings` dataclass
-(`src/config.py`), so every environment variable and its default is declared
-exactly once; constructor arguments remain available as explicit overrides,
-which is how the tests inject their own values. The one deliberate exemption is
-`transaction_simulator.py`, which the starter kit marks as provided and which
-retains its own `os.getenv` calls — every module we authored reads through
-`config`.
-
-Logging runs through `src/_logging.py`, which applies one format across
-services, tags each with its service name, and preserves bound fields as
-structured data rather than interpolating them into the message string — so the
-per-request latency records of §B1 stay machine-readable.
+Configuration resolves through one frozen `Settings` dataclass (`src/config.py`)
+— every variable and default declared once, no scattered `os.getenv`. The single
+exemption is the kit-provided `transaction_simulator.py`.
 
 ### A2. Topic and partition design
 
-The system uses a single topic, `transactions`, configured with **3
-partitions** and a replication factor of 1. The replication factor reflects the
-single-broker development cluster; production would use 3 with
-`min.insync.replicas=2`. The partition count is the more interesting number,
-because it sets the system's parallelism ceiling.
+One topic, `transactions`, with **3 partitions** (replication factor 1, a
+single-broker development constraint; production would use 3 with
+`min.insync.replicas=2`).
 
-#### Keying by customer
-
-Every message is **keyed by `customer_id`**. The producer sets
-`key=txn["customer_id"]` with a `key_serializer` that UTF-8 encodes it
-(`transaction_simulator.py:88` and `:52`), so Kafka's default partitioner
-hashes the key and routes all of a given customer's events to the same
-partition.
-
-This is not a cosmetic choice — it is what makes the design correct. The
-feature processor holds per-customer window state **in memory**, as a map from
-customer to their recent events. Correctness therefore depends on every event
-for a customer reaching the same consumer instance: if a customer's events were
-split across two consumers, each would compute aggregates over half the data
-and the two would overwrite each other in Redis, producing counts and averages
-that are silently wrong rather than obviously broken.
-
-Key-based partitioning guarantees the required locality. A customer's events
-are totally ordered within one partition, and a partition is assigned to
-exactly one consumer in a group. The properties that follow are worth stating
-explicitly:
-
-- **Per-customer ordering** is guaranteed; global ordering across the topic is
-  not, and is not needed.
-- **Parallelism is capped at the partition count** — 3 partitions supports up
-  to 3 processor instances. A fourth would sit idle.
-- **Rebalances migrate whole customers**, never split one customer's state
-  across consumers, so scaling out cannot corrupt aggregates (though it does
-  reset in-memory windows — see §A3).
-
-Consumption uses `auto_offset_reset="earliest"`, so a consumer with no
-committed offset replays the retained log and rebuilds its windows from history
-rather than starting blind against an empty state.
-
-#### Evidence: all three partitions consumed end-to-end
+Messages are **keyed by `customer_id`** (`transaction_simulator.py:88`, with a
+`key_serializer` at `:52`), so the default partitioner hashes the key and routes
+each customer's events to one partition. This is a correctness requirement, not tuning: the processor holds per-customer
+window state **in memory**, so events split across consumers would each
+aggregate half the data and overwrite one another in Redis — counts silently
+wrong rather than visibly broken. Partitioning by key also caps parallelism at
+the partition count and makes rebalances migrate whole customers.
 
 ```
 GROUP             TOPIC         PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG  CONSUMER-ID
-feature-processor transactions  1          14306           14306           0    kafka-python-3.0.8-0ba113c8…
-feature-processor transactions  2          15503           15503           0    kafka-python-3.0.8-0ba113c8…
-feature-processor transactions  0          18632           18632           0    kafka-python-3.0.8-0ba113c8…
+feature-processor transactions  1          14306           14306           0    kafka-python-…0ba113c8
+feature-processor transactions  2          15503           15503           0    kafka-python-…0ba113c8
+feature-processor transactions  0          18632           18632           0    kafka-python-…0ba113c8
 ```
 
-**Figure 2** — `kafka-consumer-groups.sh --describe --group feature-processor`.
+**Figure 2** — `kafka-consumer-groups.sh --describe`, evidencing end-to-end
+consumption.
 
-Three things are visible here, and each answers a different question.
+Three things follow. **All three partitions are assigned to a single consumer**
+— the `CONSUMER-ID` is identical on every row. **Lag is zero on each**, with
+48,441 messages fully consumed. And **the offsets are uneven** (38.5 / 29.5 /
+32.0 %), which is itself evidence that keying works: round-robin over a uniform
+producer would trend toward equal counts, whereas hashing 200 discrete customer
+keys into 3 buckets produces exactly this lumpiness. An even split would have
+been the suspicious result.
 
-**All three partitions are assigned, to a single consumer.** The `CONSUMER-ID`
-is identical on all three rows — one processor instance holds partitions 0, 1
-and 2 — confirming the stream is consumed end-to-end rather than partially.
+### A3. Windowing
 
-**Lag is zero on every partition**, with `CURRENT-OFFSET` equal to
-`LOG-END-OFFSET`. The consumer is fully caught up across **48,441 messages**,
-so the pipeline keeps pace with the producer rather than falling progressively
-behind.
+The window is **half-open** — `(at_time − window) < event_time ≤ at_time`.
+Adjacent windows then partition time cleanly, so a boundary event belongs to
+exactly one window; closed-closed bounds would double-count it, open-open would
+drop it. Evaluation uses **event time**, which is what makes the 24-hour
+backfill produce the same aggregates it would have produced live.
 
-**The offsets are unevenly distributed** — 18,632 / 14,306 / 15,503, a spread
-of roughly 38% / 30% / 32%. That asymmetry is itself evidence that keying works
-as intended. Round-robin partitioning of a uniform producer would drive the
-three partitions towards equal counts; hashing 200 discrete customer keys into
-3 buckets produces exactly this kind of lumpy distribution, because customers
-are assigned whole and their transaction volumes differ. An even split would
-have been the suspicious result.
-
-### A3. Windowing approach
-
-Features are rolling aggregates over a time window that slides with each event.
-The window is **half-open**, including an event when
-
-```
-(at_time − window_seconds) < event_time ≤ at_time
-```
-
-exclusive at the start, inclusive at the end. The asymmetry is deliberate:
-adjacent windows then partition time cleanly, so an event falling exactly on a
-boundary belongs to exactly one window — never to both, and never to neither.
-Closed-closed bounds would double-count boundary events across consecutive
-windows; open-open bounds would drop them.
-
-Windows are evaluated on **event time** — the `timestamp` carried in the
-transaction — rather than processing time. This is what makes the 24-hour
-backfill meaningful: replaying a day of history produces the same aggregates it
-would have produced had those events arrived live, because the arithmetic
-depends only on the timestamps, not on when the consumer happened to see them.
-
-#### Worked example
-
-The grading fixture (`tests/fixtures/window_fixture.json`) uses a 1-hour window
-evaluated at `2026-01-01T00:50:00Z`, giving the half-open interval
-`(2025-12-31T23:50:00Z, 2026-01-01T00:50:00Z]`.
+Aggregation lives in `windowed_stats()`, a pure function of
+`(events, start, end)` — no I/O or state, so it is testable in isolation.
 
 | Customer | Event time             | Amount | In window?                  |
 | -------- | ---------------------- | ------ | --------------------------- |
@@ -202,252 +117,87 @@ evaluated at `2026-01-01T00:50:00Z`, giving the half-open interval
 | CUST0001 | `2026-01-01T00:45:00Z` | 300.0  | ✓                           |
 | CUST0002 | `2026-01-01T00:40:00Z` | 50.0   | ✓                           |
 
-**Table 2** — Fixture events and window membership.
+**Table 2** — Grading fixture, 1-hour window evaluated at `00:50:00Z`. Expected:
+CUST0001 count 3 / avg 200.0; CUST0002 count 1 / avg 50.0.
 
-CUST0001 yields `transaction_count = 3` and `avg_amount = 200.0`; CUST0002
-yields `1` and `50.0`.
+The `999.0` event is the fixture's trap: aggregating full history instead of
+filtering the window yields count 4 / avg **399.75** — plausible numbers that no
+exception would reveal.
 
-The `999.0` event is the fixture's trap. It sits 50 minutes outside the window
-and is by far the largest amount present, so an implementation that aggregates a
-customer's full history instead of filtering to the window returns
-`transaction_count = 4` and `avg_amount = 399.75` — plausible-looking numbers
-that are wrong in a way no type error or exception would reveal. The fixture is
-built so the failure is loud in the assertion rather than silent in the output.
+**Delivery semantics.** The consumer auto-commits (kafka-python default, 5 s
+interval), so delivery is **at-least-once**. Each consequence is real and each
+has a known fix:
 
-#### Implementation
+| Hazard              | Effect                                                    | Fix |
+| ------------------- | --------------------------------------------------------- | --- |
+| Duplicate delivery  | `update()` appends unconditionally; no `transaction_id` dedup, so replays double-count | Bounded seen-ID set spanning the commit interval |
+| Out-of-order event  | Evaluated at *its own* timestamp, so a late event overwrites fresher state with staler state | Evaluate at `max(seen_timestamp)` per customer |
+| Restart / rebalance | Resumes from committed offset with an **empty** window, under-counting until refilled (`auto_offset_reset` does not help — it applies only with no committed offset) | Checkpoint state, or rewind one window on start |
+| Malformed record    | Logged and skipped, keeping the consumer alive — effectively at-most-once for those | Dead-letter topic |
 
-The aggregation lives in
-`windowed_stats(events, start_exclusive, end_inclusive)`, a **pure function** —
-no I/O, no instance state, no clock access. Everything it needs arrives as
-arguments, so it is unit-testable in isolation and reusable outside the Kafka
-consumer entirely. `FeatureProcessor.features()` is a thin wrapper that resolves
-the window bounds from the configured `FEATURE_WINDOW_SECONDS` and delegates.
+**Table 3** — At-least-once consequences and mitigations.
 
-Timestamp handling is normalised at the boundary by `to_epoch()`, which accepts
-either an ISO-8601 string or a numeric epoch and returns epoch seconds, so the
-comparison logic never branches on input format.
+Note the **Redis write is idempotent** (`SET` overwrites) while the **in-memory
+accumulation is not** — duplicates corrupt the aggregate, never the storage,
+which is why the fix belongs in `update()`.
 
-Each consumed event triggers a recompute over the customer's buffer and a write
-of four values:
+### A4. Feature store
 
-```json
-{
-  "transaction_count": 117,
-  "avg_amount": 124.57,
-  "last_amount": 174.63,
-  "max_amount": 261.06
-}
-```
+One key per customer, `features:{customer_id}`, holding a JSON features dict.
+A flat key-per-customer layout suits an access pattern that is purely point
+lookup.
 
-The model consumes only `avg_amount` and `transaction_count` (alongside `amount`
-and `is_online` taken from the request itself). `last_amount` and `max_amount`
-are computed and stored because they cost nothing extra — they ride in the same
-JSON value, so retrieving them adds no round-trip and no additional key — and
-they are the obvious next signals for a model reasoning about deviation from a
-customer's recent behaviour.
+**TTL is atomic with the write** — `SET … EX`, not `SET` then `EXPIRE`. Two
+commands can interleave with a failure and strand a key with no expiry; with
+`ex=` that state is structurally unreachable. TTL is 48 h against a 24 h window,
+so features outlive the window and a processor outage decays gracefully rather
+than falling straight to cache misses.
 
-#### Delivery semantics: late and duplicate events
+**Batch retrieval is one round-trip.** IDs are de-duplicated, a single `MGET`
+issued, and results zipped back by MGET's ordering guarantee (empty input
+short-circuits, since a zero-key `MGET` is an error). Verified behaviourally:
+after `CONFIG RESETSTAT`, a 5-transaction batch over 3 customers yields
+**`cmdstat_mget: calls=1` and no `cmdstat_get` at all**.
 
-The consumer commits offsets automatically — `enable_auto_commit` defaults to
-`True` in kafka-python with a 5-second interval, and the processor does not
-override it. The pipeline therefore has **at-least-once** delivery, and the
-consequences are worth stating precisely rather than assumed away.
+Connections are pooled per `(host, port, password)`. One detail fails silently:
+redis-py **ignores connection kwargs on the client when a pool is supplied**, so
+`decode_responses=True` must be set on the *pool* — otherwise values return as
+`bytes` and `json.loads` fails far from the mistake.
 
-**Duplicate delivery double-counts.** If the processor crashes after handling a
-batch but before the next auto-commit, those events are re-delivered on restart.
-`update()` appends unconditionally, and there is no dedup on `transaction_id`,
-so a redelivered event is counted twice — inflating `transaction_count` and
-skewing `avg_amount` toward whichever amounts were replayed. Up to 5 seconds of
-events are exposed to this on any unclean shutdown.
+| Run       | mean | p50  | p95  | p99  | max  |
+| --------- | ---- | ---- | ---- | ---- | ---- |
+| 1 (cold)  | 0.13 | 0.10 | 0.32 | 0.50 | 1.00 |
+| 2–4 (warm)| 0.04 | 0.03–0.07 | **0.04–0.09** | 0.04–0.11 | 0.14–0.36 |
 
-The distinction that matters here is between the two kinds of state. The **Redis
-write is idempotent**: `SET features:{id}` overwrites, so replaying the same
-event produces the same key with the same TTL. The **in-memory accumulation is
-not**: the event list grows by one entry each time the event is seen. Duplicates
-corrupt the aggregate, not the storage. The fix is a bounded set of recently-seen
-`transaction_id`s consulted in `update()` — cheap, since it only needs to span
-the commit interval rather than the whole window.
+**Table 4** — Retrieval latency, ms, n=1000 reads per run.
 
-**Out-of-order events overwrite fresher values.** `process_and_store()` computes
-features as of the *arriving* event's timestamp. A late event therefore writes a
-window evaluated at an earlier point in time, replacing a more current
-aggregate. Note that the late event's own contribution is handled correctly —
-`windowed_stats()` filters it out if it falls outside the window — so the damage
-is not a wrong count but a *stale* one: the write regresses the stored state to
-an earlier evaluation point. Per-customer partition ordering (§A2) keeps this
-rare with a single producer, but it becomes live with multiple producers or on
-producer retry. Evaluating at `max(seen_timestamp)` per customer rather than the
-current event's timestamp would make writes monotonic and close it.
-
-**Restart and rebalance resume with an empty window.** Because offsets are
-committed under a fixed `group_id`, a restarted processor resumes from its last
-committed offset — but its in-memory window is empty. It then writes
-under-counted features until enough events replay to refill it.
-`auto_offset_reset="earliest"` does not rescue this: that setting applies only
-when *no* committed offset exists, which is precisely not the restart case. The
-same hazard fires on a consumer-group rebalance, where migrated partitions
-arrive at a consumer with no state for those customers. Closing it means either
-checkpointing window state or deliberately rewinding offsets by one window on
-startup, accepting duplicate processing in exchange for a warm window.
-
-**Malformed records are skipped, not retried.** The consumer loop catches
-exceptions per record, logs a warning, and continues, so one bad message cannot
-halt the pipeline. For those records the effective semantic is at-most-once —
-a deliberate trade favouring availability of the aggregate over completeness of
-any single event.
-
-None of these are hypothetical failure modes invented for the report; each
-follows directly from the auto-commit configuration and the in-memory state
-design, and each has a concrete fix noted above that was scoped out rather than
-overlooked.
-
-### A4. Feature store design
-
-Redis holds one key per customer, `features:{customer_id}`, whose value is the
-JSON-serialised features dict. A flat key-per-customer layout is the right shape
-here because the access pattern is exclusively point lookup by customer — the
-API never scans, never ranges, and never queries by any other attribute. A hash
-or sorted set would add structure the workload has no use for.
-
-#### TTL is atomic with the write
-
-Every write sets its own expiry in the same command:
-
-```python
-self.client.set(key, value, ex=self.ttl_seconds)
-```
-
-Using `SET ... EX` rather than a `SET` followed by an `EXPIRE` is a deliberate
-correctness choice, not a micro-optimisation. Two commands can interleave with a
-failure: if the process dies between them, or the connection drops after the
-first, the key persists **without an expiry** and becomes permanently stale
-data that nothing will ever reclaim. Because expiry travels with the write,
-that state is structurally unreachable — there is no code path that can produce
-a features key lacking a TTL.
-
-The TTL is 48 hours against a 24-hour window, deliberately double. Features
-therefore outlive the window that produced them, so a processor outage degrades
-gracefully: the API keeps serving progressively staler features for up to two
-days rather than falling off a cliff into cache misses the moment the pipeline
-stops.
-
-#### Batch retrieval in a single round-trip
-
-`get_customer_features_batch()` maps the customer IDs to keys, issues one
-`MGET`, and zips the results back:
-
-```python
-keys = list(map(self._key, customer_ids))
-raw_values = self.client.mget(keys)
-return {cid: (json.loads(v) if v else None)
-        for cid, v in zip(customer_ids, raw_values)}
-```
-
-The `zip` is safe because `MGET` guarantees results are returned in request
-order, with a null placeholder for missing keys — so position is a reliable
-join. An empty input list short-circuits before the call, because `MGET` with
-zero keys is a Redis error rather than an empty result.
-
-This was verified behaviourally rather than assumed. Resetting Redis statistics
-with `CONFIG RESETSTAT`, scoring a 5-transaction batch spanning 3 distinct
-customers, then reading `INFO commandstats` shows **`cmdstat_mget: calls=1` and
-no `cmdstat_get` entry at all** — one round-trip, and provably not a loop of
-`GET`s that merely looks batched from the outside.
-
-#### Connection pooling
-
-Pools are cached at module level, keyed by `(host, port, password)`, so every
-`FeatureStore` constructed against the same target shares one pool rather than
-opening its own connections. Two default-constructed stores return the same pool
-object by identity; one pointed at a different port gets its own.
-
-One implementation detail is worth recording because it fails silently. When a
-`ConnectionPool` is supplied, **redis-py ignores connection keyword arguments
-passed to the client** — so `decode_responses=True` must be set on the *pool*.
-Setting it on the client instead is accepted without error and simply has no
-effect: values come back as raw `bytes`, and `json.loads` then fails at a
-distance from the actual mistake.
-
-The pool also carries `socket_connect_timeout=1` and `socket_timeout=1`. Those
-belong to the serving story rather than the storage design and are covered in
-§B1, but they are configured here because the pool is where connection
-behaviour is owned.
-
-Configuration follows the same override pattern as the rest of the system:
-constructor arguments win when supplied, otherwise values resolve from
-`settings`. That is what lets the tests point a store at a dead port or a
-blackholed host without touching the environment.
-
-#### Measured retrieval latency
-
-Retrieval latency was measured with `scripts/bench_feature_store.py`, which
-writes a known key, reads it back N times timing each read individually, and
-reports the distribution. Measurements were taken from the host against the
-published Redis port with the rest of the stack running, so they include the
-loopback hop the API itself pays rather than measuring Redis in isolation.
-
-| Run          | mean | p50  | p95  | p99  | max  |
-| ------------ | ---- | ---- | ---- | ---- | ---- |
-| 1 (cold)     | 0.13 | 0.10 | 0.32 | 0.50 | 1.00 |
-| 2            | 0.06 | 0.07 | 0.09 | 0.11 | 0.36 |
-| 3            | 0.04 | 0.03 | 0.08 | 0.09 | 0.14 |
-| 4            | 0.04 | 0.04 | 0.04 | 0.04 | 0.24 |
-
-**Table 3** — Retrieval latency in milliseconds, n=1000 reads per run.
-
-**Steady-state p95 is approximately 0.04–0.09 ms**, three orders of magnitude
-below the 50 ms requirement.
-
-The first run is reported rather than discarded because the gap is instructive.
-Its p95 of 0.32 ms is roughly four times the warm figure, and the cause is
-connection establishment: the pool opens its first socket lazily on the first
-read, and that one-off cost lands inside the measured window. Every later run
-inherits a warm pool. Reporting run 1 alone would overstate steady-state latency
-by about 4×; discarding it silently would hide the fact that the *first* request
-after a process starts genuinely is slower — which matters for a service whose
-containers are restarted on deploy.
-
-Two caveats bound what these numbers claim. They measure single-key `GET`
-retrieval, so batch retrieval is not represented — a `MGET` for k customers
-costs roughly one round-trip regardless of k, making per-customer cost strictly
-lower in the batch path. And they were taken against a local Redis over
-loopback; a networked Redis would add its round-trip time, which would dominate
-this figure entirely.
-
-The practical conclusion is that the feature store is nowhere near being the
-system's constraint. At p95 0.09 ms it accounts for well under a tenth of a
-millisecond of a request measured at 1.57 ms end-to-end — a point §P3 develops
-when locating the actual bottleneck.
+**Steady-state p95 is 0.04–0.09 ms**, three orders of magnitude under the 50 ms
+requirement. Run 1 is reported rather than discarded: its inflated p95 is the
+pool opening its first socket lazily, and hiding it would conceal that the first
+request after a process start genuinely is slower. These cover single-key `GET`
+over loopback — batch is cheaper per customer, and a networked Redis would add a
+round-trip dominating this entirely.
 
 ### A5. Links to implementation
-
-Repository: <https://github.com/msburns24/real-time-fraud-detection>
-
-<!-- TODO before export: convert these to permalinks pinned to the final commit
-     SHA (GitHub: press `y` on a file view). Line anchors drift otherwise. -->
 
 | What                       | Where                                                                 |
 | -------------------------- | --------------------------------------------------------------------- |
 | Windowed aggregation       | [`feature_processor.py` › `windowed_stats()`](../src/streaming/feature_processor.py#L53) |
-| Window evaluation          | [`feature_processor.py` › `features()`](../src/streaming/feature_processor.py#L89) |
 | Consumer loop              | [`feature_processor.py` › `run()`](../src/streaming/feature_processor.py#L114) |
 | Producer keying            | [`transaction_simulator.py` › `_send()`](../src/streaming/transaction_simulator.py#L88) |
-| Feature write (atomic TTL) | [`feature_store.py` › `store_customer_features()`](../src/streaming/feature_store.py#L63) |
-| Batch retrieval (`MGET`)   | [`feature_store.py` › `get_customer_features_batch()`](../src/streaming/feature_store.py#L80) |
+| Atomic-TTL write           | [`feature_store.py` › `store_customer_features()`](../src/streaming/feature_store.py#L63) |
+| Batch retrieval            | [`feature_store.py` › `get_customer_features_batch()`](../src/streaming/feature_store.py#L80) |
 | Connection pooling         | [`feature_store.py` › `_get_pool()`](../src/streaming/feature_store.py#L26) |
 | Configuration              | [`config.py` › `Settings`](../src/config.py#L16)                        |
-| Windowing fixture          | [`tests/fixtures/window_fixture.json`](../tests/fixtures/window_fixture.json) |
-| Retrieval benchmark        | [`scripts/bench_feature_store.py`](../scripts/bench_feature_store.py)   |
+| Windowing fixture          | [`window_fixture.json`](../tests/fixtures/window_fixture.json)          |
 
-**Table 4** — Part A implementation index.
+**Table 5** — Part A implementation index.
 
 ---
 
 ## Part B — Model Serving & Containerization
 
 ### B1. API design and endpoints
-
-The service exposes four endpoints:
 
 | Method | Path             | Purpose                                                     |
 | ------ | ---------------- | ----------------------------------------------------------- |
@@ -456,247 +206,289 @@ The service exposes four endpoints:
 | `POST` | `/predict`       | Scores a single transaction                                 |
 | `POST` | `/predict_batch` | Scores a list, retrieving all features in one Redis command |
 
-**Table 5** — API surface.
+**Table 6** — API surface.
 
-#### Schema-driven validation
+**Validation is schema-driven.** `Transaction` and `FraudPrediction` are Pydantic
+models, so FastAPI rejects malformed input at the boundary with HTTP 422 and a
+machine-readable body — verified for both a missing field and a wrong type. The
+same declaration drives request parsing, the 422 responses and the OpenAPI
+document at `/docs`, so they cannot drift apart.
 
-Request and response shapes are declared as Pydantic models —
-`Transaction` and `FraudPrediction` — rather than validated by hand. FastAPI
-enforces them at the boundary, so malformed input never reaches application
-code and returns HTTP 422 with a machine-readable description of what was
-wrong:
+**The model is loaded once**, at module scope (`main.py:26`). The cost avoided
+was measured: the first `joblib.load` takes **≈470 ms** — mostly importing
+scikit-learn's unpickling machinery — and later loads **0.11 ms**. Per-request
+loading would make each container's first request absorb 470 ms and every later
+one still pay 0.11 ms (22% of a 0.50 ms p50) for invariant work;
+`--start-period=10s` covers the startup cost. `/model/info` returns
+`sklearn-logreg-v1`, confirming the trained artifact, not the fallback.
 
-```json
-{ "detail": [ { "type": "missing", "loc": ["body", "amount"],
-               "msg": "Field required", "input": { … } } ] }
-```
+`/predict` retrieves features, merges, scores and times the whole path.
+**Transaction fields win on collision** — cached features summarise history,
+while the transaction describes the event being scored. `/predict_batch`
+de-duplicates customer IDs, issues one `MGET`, and returns predictions in
+request order; each item's `latency_ms` is measured from batch start, so it means
+"elapsed when this prediction became available".
 
-Both omitted fields and wrong types are rejected: sending no `amount` and
-sending `"amount": "not-a-number"` each return 422. The value here is that the
-validation rules and the API documentation are the *same* declaration — the
-schema drives request parsing, the 422 responses, and the OpenAPI document
-served at `/docs`, so they cannot drift apart. §P4 returns to this, because the
-one place that guarantee costs measurable latency is on the response path.
+**Redis failure degrades rather than propagates.** Lookups catch
+`redis.RedisError` *specifically* — a bare `except` would turn every programming
+error into a plausible-looking prediction — log a warning, and score on the
+transaction alone. With Redis stopped, the suite passes and both endpoints
+return 200.
 
-Only `transaction_id` is optional; `customer_id`, `amount`,
-`merchant_category`, `is_online`, and `timestamp` are required.
+**Timeouts make this fast rather than merely correct.** A *refused* connection
+fails instantly, so stopping the container makes a naive implementation look
+resilient; a *blackholed* host would block indefinitely, since redis-py leaves
+socket timeouts unset. With both timeouts at 1 s, `/predict` against an
+unroutable address returns in **1.02 s**. Testing only the easy failure would
+have shipped something that looked robust and was not.
 
-#### The model is loaded once
-
-`FraudDetector` and `FeatureStore` are instantiated at module scope
-(`main.py:26-27`), so the model artifact is deserialised exactly once when the
-process starts — not per request.
-
-The cost this avoids was measured rather than assumed, and it has two distinct
-components. The **first** `joblib.load` in a process takes **≈470 ms**, most of
-which is importing the scikit-learn machinery required to unpickle the estimator
-rather than reading the 
-file. **Subsequent** loads in the same process cost **0.11 ms** (p50 over 20
-reloads), since the imports are cached.
-
-Loading inside the handler would therefore be doubly wrong. The first request
-served by each container would absorb the full ~470 ms — a latency spike on
-exactly the request most likely to be a health check or a cold-start probe —
-and every later request would still pay 0.11 ms, which is **14% of the measured
-0.77 ms p50** for work that never varies between requests. Hoisting it to module
-scope pays the 470 ms once at startup, where `HEALTHCHECK --start-period=10s`
-already accommodates it (§B2).
-
-The same reasoning applies to the store's connection pool, established once and
-shared across requests (§A4).
-
-`/model/info` reports `sklearn-logreg-v1`, confirming the trained artifact is
-the one in use rather than the rule-based fallback that `FraudDetector`
-substitutes when no model file is present.
-
-#### Request flow
-
-`/predict` performs four steps under a single `time.perf_counter()` span:
-retrieve the customer's cached features, merge them with the incoming
-transaction, score the merged record, and return the prediction with its
-measured latency.
-
-Merging is delegated to a small helper so that single and batch paths cannot
-diverge:
-
-```python
-def merge_features(txn: dict, stored: dict | None) -> dict:
-    return {**(stored or {}), **txn}
-```
-
-**Transaction fields take precedence on collision.** The ordering is
-deliberate: cached features summarise a customer's history, while the
-transaction describes the event actually being scored, so the request must win.
-Handling `None` inside the helper — rather than at each call site — means an
-unknown customer and a degraded lookup both reduce to "score on the transaction
-alone" without duplicated branching.
-
-#### Batch scoring
-
-`/predict_batch` accepts a list and returns predictions **in request order**.
-Customer IDs are de-duplicated into a set before retrieval, so a batch
-containing several transactions for the same customer still issues one lookup
-for that customer, and the whole batch costs a single `MGET` (§A4).
-
-One semantic is worth stating explicitly because it is a defensible choice
-rather than an oversight: each item's `latency_ms` is measured from the *start
-of the batch*, so later items report larger values. It therefore means "elapsed
-when this prediction became available", not "time spent scoring this item". For
-a caller waiting on the whole response that is the more useful quantity, but it
-is not comparable to the per-request `latency_ms` returned by `/predict`.
-
-#### Graceful degradation
-
-A feature-store outage must not become a serving outage. Both retrieval paths
-are wrapped so that Redis failures degrade the prediction rather than failing
-the request:
-
-```python
-try:
-    return store.get_customer_features(customer_id)
-except redis.RedisError as exc:
-    logger.warning(f"feature lookup degraded for {customer_id}: {exc}")
-    return None
-```
-
-The exception type is deliberately narrow. Catching `redis.RedisError`
-specifically — rather than a bare `except` — means connection failures, timeouts
-and protocol errors degrade gracefully, while a genuine bug in our own code
-(a `KeyError`, a `TypeError`) still propagates and surfaces as a 500 rather than
-being silently swallowed and mislabelled as a Redis problem. A bare `except`
-here would convert every programming error into a plausible-looking prediction.
-
-With Redis stopped entirely, the full API test suite still passes and both
-endpoints return **200**, scoring from the transaction fields alone.
-
-**Timeouts are what make this fast rather than merely correct.** A *refused*
-connection fails immediately, so the naive implementation appears to degrade
-well when Redis is simply stopped. A *blackholed* host — packets dropped with no
-RST, the more realistic network partition — behaves completely differently:
-redis-py leaves socket timeouts unset by default, so the request would block
-indefinitely. Setting `socket_connect_timeout=1` and `socket_timeout=1` on the
-pool bounds it. Pointed at an unroutable address (`10.255.255.1`), `/predict`
-returns in **1.02 s** rather than hanging.
-
-That distinction is worth drawing out because testing only the easy failure —
-stopping the container — would have produced a system that looked resilient and
-was not.
-
-#### Observability
-
-Each request emits a structured log record with the measurement and its context
-bound as fields rather than interpolated into the message:
-
-```
-prediction served | {'service': 'api', 'customer_id': 'CUST0001',
-                     'latency_ms': 0.386, 'fraud_probability': 1.0,
-                     'degraded': True}
-```
-
-Keeping these as fields rather than formatted text means a JSON sink can index
-them directly, and the pairing of `latency_ms` with `degraded` is what allows a
-slow request to be attributed to a feature-store problem rather than to the
-model.
-
-**A known limitation applies to that attribution.** The `degraded` flag is
-currently derived from `stored is None`, but `lookup_features` returns `None`
-for two different conditions: a Redis error *and* an ordinary cache miss. An
-unknown customer with Redis perfectly healthy is therefore logged as
-`degraded: True`, as the record above shows — that request was a cache miss, not
-an outage. The flag is consequently a reliable indicator that features were
-*absent*, but not that Redis was *unavailable*, and it should not be used to
-alert on store health as it stands. The fix is to signal the two cases
-distinctly — returning a `(features, degraded)` pair, or setting the flag only
-in the `except` branch — and is noted rather than applied because the change
-landed outside the scope of this submission.
+Each request logs `customer_id`, `latency_ms`, `fraud_probability` and a
+`degraded` flag as bound structured fields. **Known limitation:** `degraded` is
+derived from `stored is None`, which is true for both a Redis error *and* an
+ordinary cache miss — so an unknown customer is logged as degraded even when
+Redis is healthy. The flag reliably indicates features were *absent*, not that
+Redis was *unavailable*, and should not be used to alert on store health.
 
 ### B2. Containerization
 
-The API ships as a multi-stage image. A builder stage installs dependencies
-under a staging prefix; the runtime stage copies only the installed tree:
+A multi-stage build: the builder installs under `--prefix=/install` and the
+runtime copies that tree to `/usr/local`, which works because that is where the
+runtime image's `site-packages` lives. Getting it wrong yields an image that
+builds cleanly and dies at first import — so the build was verified by importing
+the real dependency graph *inside* the container.
 
-```dockerfile
-FROM python:3.11-slim AS builder
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+`.dockerignore` excludes `.venv/`, `.git/`, caches, `logs/` and `.env`, keeping
+the build context at **1.1 MB** — the virtualenv alone is **537 MB**. Excluding
+`.env` is a security property: it keeps credentials out of image layers, where
+they survive later deletion.
 
-FROM python:3.11-slim
-COPY --from=builder /install /usr/local
-COPY src/ ./src/  models/ ./models/  data/ ./data/
+The image runs as non-root. `chown` runs **before** `USER`, so `/app` is owned
+by the account that runs the process; `docker inspect` confirms `User=appuser`.
+
+The health check uses `python -c "import urllib.request…"` rather than `curl`,
+because **`python:3.11-slim` ships no `curl`** — the conventional probe would
+fail with "command not found" and report `unhealthy` forever while the service
+served traffic normally.
+
+Compose gates application services on `depends_on: service_healthy`, not
+`service_started` (which asserts only that a container was created). One
+subtlety: `feature-processor` and `simulator` share the image and inherit its
+HTTP health check despite serving no HTTP, so both set
+`healthcheck: { disable: true }` — otherwise a `service_healthy` dependency on
+them would deadlock.
+
+### B3. Blue-green deployment
+
+`api-blue` and `api-green` run simultaneously behind nginx, built from the same
+image and sharing Redis, so they differ only in version. Exactly one upstream
+`server` line is active. Clients use the stable `:8080`; each colour is also
+reachable directly on `:8001` / `:8002`.
+
+`switch_traffic.sh` detects the current colour by grepping the config (state
+lives in the config, so it cannot disagree with reality), **health-gates the
+target on its direct port**, flips the lines, then reloads nginx. The direct
+port is load-bearing: probing `:8080` would confirm only that the *active*
+version is healthy. Because the gate runs before the config is touched, under
+`set -euo pipefail`, a target that fails to start yields a failed *deployment*,
+not an outage. **Rollback is the same command**, so that path cannot rot.
+
+`nginx -s reload` keeps the listening socket open and forks new workers while
+old ones drain. Keep-alive connections are **not** pinned to draining workers —
+those close idle connections and clients reconnect onto the new colour.
+
+| Measurement                       | Result                            |
+| --------------------------------- | --------------------------------- |
+| Requests served by blue           | 17,809                            |
+| Requests served by green          | 42,330                            |
+| Errors (harness, 60,000 requests) | **1** (0.002%)                    |
+| New-connection probe              | **0** non-200 of 140              |
+| Latency through nginx             | p50 1.14 / p95 3.28 / p99 4.78 ms |
+
+**Table 7** — Cutover under continuous load.
+
+The single error is the keep-alive close race described above, consistent with
+the independent probe seeing zero failures. **The per-colour counts are the
+proof, not the error count** — both being non-zero can only be produced by
+traffic actually moving mid-run.
+
+#### B3.1 A silent failure in the provided switch script
+
+The first three cutover runs appeared to succeed and did not. The script printed
+`Switched to green`, nginx reloaded cleanly, the host config showed the new
+state, and the harness reported zero errors. Traffic never moved.
+
+`sed -i` is not in-place: it writes a temporary file and renames it, producing a
+**new inode** (demonstrated: `2238265` → `2238266`). The compose file
+bind-mounts `nginx.conf` as a *single file*, and single-file mounts bind the
+**inode**, not the path — so the rename detached the container's view and nginx
+reloaded the original, unchanged file. Every layer was correct in isolation,
+which is why it was invisible. Fixed by rewriting the original inode
+(`cat "$CONF.tmp" > "$CONF"`); recovery also needed `--force-recreate nginx`,
+since the running mount still resolved to the orphaned inode.
+
+The deeper failure was that the verification could not detect the bug.
+`errors: 0` is consistent with success, with a mistimed switch, *and* with no
+switch at all — so it distinguishes nothing. Per-colour counts have a signature
+no failure mode can fake. **Verify the effect, not the actuator.**
+
+### B4. Links to implementation
+
+| What                       | Where                                                              |
+| -------------------------- | ------------------------------------------------------------------ |
+| Startup model load (once)  | [`main.py` › module scope](../src/api/main.py#L26)                  |
+| `/predict`                 | [`main.py` › `predict_fraud()`](../src/api/main.py#L93)             |
+| `/predict_batch`           | [`main.py` › `predict_fraud_batch()`](../src/api/main.py#L115)      |
+| Graceful degradation       | [`main.py` › `lookup_features()`](../src/api/main.py#L58)           |
+| Scoring + fallback         | [`fraud_detector.py` › `predict()`](../src/api/fraud_detector.py#L42) |
+| Multi-stage image          | [`Dockerfile`](../Dockerfile)                                       |
+| Service orchestration      | [`docker-compose.yml`](../docker-compose.yml)                       |
+| Cutover script             | [`switch_traffic.sh`](../deployment/switch_traffic.sh)              |
+
+**Table 8** — Part B implementation index.
+
+---
+
+## Performance
+
+### P1. Method
+
+Figures come from the provided harness with its fixed seed (789):
+
+```bash
+python tests/test_performance.py --n 5000 --url http://localhost:8000
 ```
 
-The `--prefix=/install` / `COPY … /usr/local` pairing is the part that has to be
-right: it works because `/usr/local` is exactly where the runtime image's
-`site-packages` lives, so the copied tree lands on the interpreter's import
-path. Getting this wrong produces an image that builds cleanly and then fails at
-first import — which is why the build was verified by importing the real
-dependency graph inside the container, not merely by the build succeeding.
+**`--n 5000`, not the default 1000** — at ~1,500 req/s, 1,000 requests is under
+a second of sampling, too short for a stable p99 and dominated by startup.
 
-**Image size is 796 MB**, and honesty requires noting that multi-stage buys less
-here than it often does. The largest contributors are the scientific stack —
-scipy 113 MB, pandas 76 MB, scikit-learn 50 MB, numpy 45 MB, plus ~58 MB of
-bundled shared libraries — which the runtime genuinely needs. What the second
-stage does eliminate is build residue: the pip cache, `requirements.txt`, and
-the builder's working tree never appear in a runtime layer. A materially smaller
-image would require dropping pandas from the serving path or moving to a
-slimmer inference runtime, neither of which was in scope.
+**Requests are cache hits, verified not assumed.** The simulator creates
+`CUST0000`–`CUST0199` and the harness draws the same range, so every request
+exercises the full lookup → merge → score path, not the cache-miss shortcut.
 
-#### Build context
+**The harness is sequential**, so `throughput_rps` is the reciprocal of mean
+latency, not concurrent capacity. Concurrency-oriented changes (async Redis,
+more workers) would therefore register as no improvement — which is why §P4
+targets per-request work. Every figure below is a median of repeated runs.
 
-`.dockerignore` excludes `.venv/`, `.git/`, caches, `logs/`, and `.env`. The
-measured context is **1.1 MB**; the virtualenv alone is **537 MB** and would
-otherwise be uploaded to the daemon on every single build.
+### P2. Results
 
-Excluding `.env` is a security property rather than a performance one: it keeps
-credentials from being baked into an image layer, where they would persist even
-if a later layer deleted the file.
+| Metric     | Result     |
+| ---------- | ---------- |
+| Requests   | 5000       |
+| Errors     | **0**      |
+| Throughput | 1497 req/s |
+| p50        | 0.50 ms    |
+| p95        | 1.42 ms    |
+| p99        | 3.24 ms    |
+| max        | 5.47 ms    |
 
-#### Non-root execution
+**Table 9** — Load-test results (`results.json`); median of three runs, spread
+1392–1571 req/s and p95 1.27–1.49 ms, zero errors throughout.
 
-```dockerfile
-RUN useradd --create-home --shell /bin/bash appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+**p95 of 1.42 ms against the 100 ms requirement is roughly 70× headroom.**
+
+§B3's blue-green figures (p50 1.14 / p95 3.28 at 720 req/s) are worse on every
+axis because that run went **through the nginx proxy**, whereas Table 9 is
+direct to `:8000`. The difference is the proxy hop, not a regression.
+
+### P3. Bottleneck analysis
+
+**Hypothesis: scikit-learn inference dominates** — it is the only numerically
+intensive step, and `predict_proba` validates input on every call.
+
+| Stage            | p50 (ms)   |
+| ---------------- | ---------- |
+| Input validation | 0.0049     |
+| Redis `GET`      | 0.0494     |
+| Merge            | 0.0006     |
+| Model inference  | 0.0663     |
+| Logging          | 0.0215     |
+| **Total**        | **0.1427** |
+
+**Table 10** — Per-stage cost, in-process, n=2000.
+
+**Falsified.** Inference is the largest application term, but the *entire*
+application is 0.143 ms of a 0.552 ms request. Driving inference to zero would
+gain about 12%.
+
+Benchmarking `/health` — which parses no body and touches no dependency —
+isolates the floor imposed by client, loopback and baseline framework handling:
+
+```
+0.552 ms  /predict (median of 5 × 4000 requests)
+−0.241 ms  transport + framework floor (/health)   44%
+−0.143 ms  application work (Table 10)             26%
+─────────
+ 0.168 ms  endpoint-specific framework cost        30%
 ```
 
-The ordering matters. `chown` runs **before** `USER`, so `/app` is owned by the
-account that will run the process; switching users first would leave the
-application files owned by root and readable-but-not-writable by the runtime
-user. `docker inspect` confirms `User=appuser` on the running container.
+**The system is framework-bound, not compute-bound.** Redis contributes 0.049 ms
+and inference 0.066 ms; well over half the request is transport and framework
+machinery no application change can reach.
 
-#### Health checking
+### P4. The optimization attempted
 
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
-```
+**Hypothesis.** FastAPI validates the response twice: the handler constructs a
+`FraudPrediction`, and `response_model=FraudPrediction` then re-validates that
+finished object against the model that produced it. Declaring
+`response_model=None` removes the second pass. An early measurement put the
+`/predict`-minus-`/health` gap at 0.509 ms and suggested this was the dominant
+term.
 
-The conventional `CMD curl -f http://localhost:8000/health` **cannot work on
-this image** — `python:3.11-slim` ships no `curl`, so the probe would fail with
-"command not found" and the container would report `unhealthy` forever while
-serving traffic perfectly. Using the interpreter that is guaranteed present
-avoids adding a package solely to support the probe.
+**Method.** The container was rebuilt for each variant and both were measured
+with the *same* paired benchmark — 3 × 4000 requests against `/health` and
+`/predict` per build — comparing the **gap**, so machine drift affects both
+terms equally.
 
-`--start-period=10s` exists to cover startup: the ~470 ms model load (§B1) plus
-uvicorn's boot, during which failing probes are not counted against the retry
-budget. The running container reports `Health=healthy`.
+| Build                              | `/health` p50 | `/predict` p50 | gap          |
+| ---------------------------------- | ------------- | -------------- | ------------ |
+| Baseline (`response_model=Fraud…`) | 0.243 ms      | 0.517 ms       | **0.269 ms** |
+| Optimized (`response_model=None`)  | 0.237 ms      | 0.538 ms       | **0.297 ms** |
 
-#### Compose orchestration
+**Table 11** — A/B comparison of the response-validation change.
 
-Five services are wired together, with the application services gated on
-dependency health rather than mere process start:
+**The hypothesis is not supported.** Removing response validation produced no
+measurable improvement — the optimized build measured marginally slower, within
+run-to-run variation. The load harness could not resolve any difference either
+(1392–1571 vs 1048–1558 req/s, overlapping ranges).
 
-```yaml
-depends_on:
-  kafka: { condition: service_healthy }
-  redis: { condition: service_healthy }
-```
+**Why the original estimate was wrong is the more useful finding.** The 0.509 ms
+gap came from a single measurement taken earlier under different machine load.
+Re-measuring the baseline immediately alongside the optimized build gave
+0.269 ms, and the entire apparent saving disappeared with it. The change had
+been credited with drift between two measurement sessions. **A difference
+measured across time is not an A/B test** — the same failure shape as §B3.1,
+where a metric consistent with several realities was read as evidence for one.
 
-`service_started` would only assert that a container had been created — the API
-could then begin serving before Kafka accepted connections. `service_healthy`
-waits for the dependency's own healthcheck to pass.
+**Decision: reverted.** With no latency benefit the trade is pure cost —
+`response_model=None` removes `/predict`'s schema from the OpenAPI document for
+nothing in return. The remaining 0.168 ms is genuine framework overhead but
+*distributed* across body parsing, dependency resolution, validation and
+serialisation, not concentrated in one removable component — which is precisely
+why the flag did nothing. Reducing it further would need a different framework
+or serialisation strategy; at 70× headroom there is no case for that.
 
-One detail is easy to miss: `feature-processor` and `simulator` are built from
-the **same image** as the API, so they inherit its HTTP `HEALTHCHECK` — and
-neither serves HTTP, so both would be permanently `unhealthy`. Each therefore
-sets `healthcheck: { disable: true }`. The symptom is cosmetic, but on a
-`service_healthy` dependency it would deadlock a dependent service indefinitely.
+---
+
+## Appendix — Defects found in the provided infrastructure
+
+Three latent defects surfaced during integration. All three **failed silently**,
+presenting as a healthy system while something essential did not work.
+
+| Defect                                       | What looked fine          | What actually exposed it              |
+| -------------------------------------------- | ------------------------- | ------------------------------------- |
+| Kafka health check ran `kafka-topics.sh` off `PATH` (scripts live in `/opt/kafka/bin`) | Broker served traffic normally | `service_healthy` never satisfied |
+| `offsets.topic.replication.factor=3` on a single broker, so `__consumer_offsets` could not be created and no consumer group could form | Producer wrote 9,600 messages successfully | `__consumer_offsets` absent; Redis stayed empty |
+| `sed -i` replaced the bind-mounted config's inode (§B3.1) | Script reported success; nginx reloaded | Per-colour request counts |
+
+**Table 12** — Silent failures and the evidence that exposed them.
+
+The second requires `docker compose down -v` after the fix, since the broker
+persists the original replication factor in its metadata and a plain restart
+retains the broken setting.
+
+The practice this project settled on is to verify the observable *consequence*
+rather than a mechanism's self-report — a key written by one service and read by
+another, dependencies imported inside a built image, request counts on both
+sides of a cutover. That discipline is why §P4 reports a refuted hypothesis
+rather than a convenient improvement.

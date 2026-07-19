@@ -5,8 +5,8 @@ feeds a windowed feature processor, which writes rolling per-customer
 aggregates into Redis; a FastAPI service joins those cached features with the
 incoming transaction and scores it with a trained scikit-learn model.
 
-Measured end-to-end: **p95 1.57 ms** at **1157 req/s**, against a 100 ms
-requirement — roughly 60× headroom. Numbers and method in
+Measured end-to-end: **p95 1.42 ms** at **1497 req/s**, against a 100 ms
+requirement — roughly 70× headroom. Numbers and method in
 [Performance](#performance); design rationale, failure modes and known
 limitations in [docs/architecture.md](docs/architecture.md).
 
@@ -186,13 +186,16 @@ Measured against the full stack, direct to the API
 | Metric     | Result         |
 | ---------- | -------------- |
 | Requests   | 5000, 0 errors |
-| Throughput | 1156.7 req/s   |
-| p50        | 0.77 ms        |
-| p95        | 1.57 ms        |
-| p99        | 2.42 ms        |
-| max        | 6.98 ms        |
+| Throughput | 1497 req/s     |
+| p50        | 0.50 ms        |
+| p95        | 1.42 ms        |
+| p99        | 3.24 ms        |
+| max        | 5.47 ms        |
 
-Run with `--n 5000` rather than the default 1000: at ~1.1k rps, 1000 requests
+Median of three consecutive runs (throughput 1392–1571 req/s, p95 1.27–1.49 ms,
+zero errors throughout).
+
+Run with `--n 5000` rather than the default 1000: at ~1.5k rps, 1000 requests
 is under a second of sampling, which makes p99 mostly noise and lets startup
 dominate throughput.
 
@@ -203,26 +206,25 @@ space. So the figures cover the real lookup → merge → score path.
 **Where the time goes** (`python -m scripts.profile_predict -n 2000`, per-stage
 p50 in ms):
 
-| Stage            | p50       |
-| ---------------- | --------- |
-| input validation | 0.0051    |
-| Redis `GET`      | 0.054     |
-| merge            | 0.0007    |
-| model inference  | 0.0758    |
-| logging          | 0.022     |
-| **total**        | **0.158** |
+| Stage            | p50        |
+| ---------------- | ---------- |
+| input validation | 0.0049     |
+| Redis `GET`      | 0.0494     |
+| merge            | 0.0006     |
+| model inference  | 0.0663     |
+| logging          | 0.0215     |
+| **total**        | **0.1427** |
 
-Application code is only **20%** of the 0.77 ms request. Benchmarking `/health`
-(which does no work) through the same client gives a transport floor of 0.234
-ms — which leaves **~0.371 ms, 48% of every request, in FastAPI's per-request
+Application code is only **19%** of a 0.769 ms request. Benchmarking `/health`
+(which does no work) through the same client gives a transport floor of 0.260
+ms — which leaves **~0.366 ms, 48% of every request, in FastAPI's per-request
 model machinery**. Inbound validation is negligible at 0.005 ms, so the cost is
 on the way out: `response_model` re-validates the already-constructed
 `FraudPrediction` against the model that built it.
 
-Setting `response_model=None` removes that pass, but it also deletes
-`/predict`'s schema from the OpenAPI docs. At 1.57 ms against a 100 ms
-requirement, that trade wasn't worth taking — so it's quantified and
-deliberately declined rather than applied.
+The system is framework-bound, not compute-bound. See
+[the report](docs/report.md#p3-bottleneck-analysis) for the full decomposition
+and what was done about it.
 
 ## Blue-green deployment
 

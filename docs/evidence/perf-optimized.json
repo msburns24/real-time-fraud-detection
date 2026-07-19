@@ -1,0 +1,11 @@
+{
+  "requests": 5000,
+  "errors": 0,
+  "throughput_rps": 1321.5,
+  "latency_ms": {
+    "p50": 0.52,
+    "p95": 2.36,
+    "p99": 3.52,
+    "max": 5.65
+  }
+}

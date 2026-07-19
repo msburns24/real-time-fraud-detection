@@ -33,7 +33,7 @@ else follows from it.
 stateful and bursty. Coupling them would put Kafka consumption in the request
 path, so a broker hiccup would become a serving outage and consumer lag would
 become client latency. With Redis between them, the API's cost is one `GET` plus
-one model call — measured at 0.13 ms of application work — and the processor can
+one model call — measured at 0.12 ms of application work — and the processor can
 lag, restart, or be redeployed without the API noticing. The trade is
 **staleness**: the API serves the last features written, not features as of
 right now. For fraud scoring on rolling 24-hour aggregates, seconds of staleness
@@ -155,20 +155,20 @@ request can be attributed to a feature-store outage rather than the model.
 
 ## 6. Performance characteristics
 
-Measured on the full stack, direct to the API (n=5000): **p50 0.77 ms · p95 1.57
-ms · p99 2.42 ms · 1157 req/s · 0 errors**, against a 100 ms requirement.
+Measured on the full stack, direct to the API (n=5000): **p50 0.50 ms · p95 1.42
+ms · p99 3.24 ms · 1497 req/s · 0 errors**, against a 100 ms requirement.
 
 Profiling the hot path in isolation (`python -m scripts.profile_predict`) puts
-total application work at **0.158 ms p50** — Redis `GET` 0.054, model inference
+total application work at **0.143 ms p50** — Redis `GET` 0.049, model inference
 0.076, logging 0.022, merge and validation negligible. Benchmarking `/health`
-through the same client gives a 0.234 ms transport floor.
+through the same client gives a 0.260 ms transport floor.
 
 The conclusion is that **the system is framework-bound, not compute-bound**:
 application logic is ~20% of a request, and ~48% is FastAPI's per-request model
 machinery, dominated by `response_model` re-validating an already-constructed
 `FraudPrediction`. That pass can be removed with `response_model=None`, at the
 cost of `/predict`'s OpenAPI schema — quantified and deliberately declined,
-since 1.57 ms against a 100 ms budget is ~60× headroom and the schema is worth
+since 1.42 ms against a 100 ms budget is ~70× headroom and the schema is worth
 more than 0.2 ms.
 
 Redis is not the bottleneck and is unlikely to become one soon: retrieval

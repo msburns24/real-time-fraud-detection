@@ -115,12 +115,14 @@ Legend: ✅ done · 🟡 partial/needs fix · ❌ missing
 - **Addresses:** in-container Kafka `kafka:9092`, Redis `redis:6379`; from host
   Kafka `localhost:29092`, Redis `localhost:6379`. API on `:8000`; nginx
   blue-green stable endpoint `:8080`, blue `:8001`, green `:8002`.
-- **Claude's shell is network-isolated from published container ports**
-  (confirmed 2026-07-18: `curl localhost:8000` and even `ss -ltn` see nothing
-  while the container is provably healthy). So **every network-facing check —
-  5.3, 5.4, 6.2, Phase 7 load runs — must be run by the user**, not by Claude.
-  Claude's `curl`/socket probes are not evidence of failure. Earlier plan notes
-  claiming Claude reached Redis at `localhost:6379` no longer hold.
+- ~~**Claude's shell is network-isolated from published container ports**~~
+  **SUPERSEDED 2026-07-19 — this is no longer true.** Throughout the 2026-07-19
+  session Claude reached `localhost:8000` and `localhost:6379` directly and
+  repeatedly (`/health` 200 in 0.5 ms, `/predict`, `/predict_batch`, the 422
+  probes, `bench_feature_store` against Redis). Network-facing checks **can** be
+  run by Claude; they no longer need to be handed to the user. The 2026-07-18
+  observation was real at the time but does not describe the current
+  environment — re-test rather than assuming either way.
 - **Artifact layout (decided 2026-07-19):** the prompt specifies **no** location
   for artifacts — it only says the harness "writes a `results.json` you can quote
   in your report", and its prescribed `docs/` tree lists just `architecture.md`
@@ -420,30 +422,30 @@ early, pull stills from the video instead (`ffmpeg -ss <t> -i segN.mp4
       none exist in the repo today. Needed: the blue-green swap, `docker compose
       ps` all-healthy, a `/predict` response. See the ordering note above.
       _Check:_ images committed and referenced from the report.
-- [ ] **11.5** _(B3, 4 pts)_ **Blue-green design & evidence** — health gate on
+- [x] **11.5** _(B3, 4 pts)_ **Blue-green design & evidence** — health gate on
       direct colour ports, gate-before-`sed`, graceful nginx reload, measured
       blue 17,809 / green 42,330, 1 error in 60,000 stated honestly. _Check:_
       per-colour counts included, not just an error count.
-- [ ] **11.6** _(B3)_ **The `sed -i` inode bug** + the methodological point that
+- [x] **11.6** _(B3)_ **The `sed -i` inode bug** + the methodological point that
       `errors: 0` alone cannot prove a cutover. _Check:_ written as a finding
       with its evidence, not an aside.
-- [ ] **11.7** _(B4)_ **Links to implementation** — permalinked. _Check:_ all
+- [x] **11.7** _(B4)_ **Links to implementation** — permalinked. _Check:_ all
       resolve.
 
 ### Phase 12 — Report Performance (2 pages, 10 pts)
 
-- [ ] **12.1** _(P1, 2 pts)_ **Method** — provided harness, fixed seed 789, why
+- [x] **12.1** _(P1, 2 pts)_ **Method** — provided harness, fixed seed 789, why
       `--n 5000` over 1000, and cache-hit verification via the shared ID space.
       _Check:_ the harness + fixed seed are explicitly named.
-- [ ] **12.2** _(P2, 4 pts)_ **Results** — p50/p95/p99 + throughput table;
+- [x] **12.2** _(P2, 4 pts)_ **Results** — p50/p95/p99 + throughput table;
       ~60× headroom; the nginx-vs-direct contrast. _Check:_ all four figures
       present and matching `results.json`.
-- [ ] **12.3** _(P3)_ **Bottleneck analysis** — present as hypothesis →
+- [x] **12.3** _(P3)_ **Bottleneck analysis** — present as hypothesis →
       measurement → falsification: inference predicted to dominate; per-stage
       profile shows the whole app is 20%; `/health` floor isolates ~0.371 ms
       (48%) as FastAPI response re-validation. _Check:_ the falsified
       hypothesis is shown, not hidden.
-- [ ] **12.4** _(P4, 4 pts — points currently at risk)_ **Actually apply the
+- [x] **12.4** _(P4, 4 pts — points currently at risk)_ **Actually apply the
       optimization and measure it.** The rubric wants one optimization *tried*;
       analyzing and declining without an after-number risks the marks. Set
       `response_model=None` on `/predict`, rebuild the api container, then re-run
@@ -455,16 +457,23 @@ early, pull stills from the video instead (`ffmpeg -ss <t> -i segN.mp4
 
 ### Phase 13 — Report appendix & assembly
 
-- [ ] **13.1** **Appendix: defects found in the provided kit** — Kafka
+- [x] **13.1** **Appendix: defects found in the provided kit** — Kafka
       healthcheck `PATH`, single-broker `offsets.topic.replication.factor`, the
       `sed -i` inode bug; closing note that all three were *silent* failures.
       _Check:_ each has symptom → diagnosis → fix.
-- [ ] **13.2** **Page-budget pass** — trim to 3 / 3 / 2 within the 8-page cap.
-      _Check:_ exported PDF is ≤8 pages.
-- [ ] **13.3** **Link & figure audit** — every link resolves, every figure has a
+- [~] **13.2** **Page-budget pass** — trimmed 20pp → **~9pp estimated** (54%
+      reduction) via the two-tier decision: report states decisions + evidence,
+      depth lives in `architecture.md` / `blue_green_design.md`, which it links.
+      **Blocked on a real render** — the estimate is a words/rows heuristic, not
+      a page count. User targets **7pp** (cap 8). If the Word export runs over,
+      cut in this order: (1) the two link tables (16 rows) → inline lists,
+      (2) Table 3 delivery-semantics → prose, (3) A2's "three things follow"
+      paragraph → one sentence. _Check:_ exported PDF ≤ 7–8 pages.
+- [x] **13.3** **Link & figure audit** — every link resolves, every figure has a
       caption and a real source. _Check:_ zero broken links (named deduction).
-- [ ] **13.4** **Export to PDF.** _Check:_ `report.pdf` renders with figures
-      intact.
+- [ ] **13.4** **Export to PDF.** _User-side_ — `pandoc` is not installed here
+      and the user is moving to Windows/Word for final formatting. _Check:_
+      `report.pdf` renders with figures intact and lands within the page cap.
 
 ### Phase 14 — Live-demo screencast (10 pts)
 
@@ -587,6 +596,17 @@ gets tight, the cut order above is the fallback.
       `.env.example`. Documented as a known gap in the README meanwhile.
       _Check:_ `API_PORT=9000` either changes the served port or the variable is
       gone.
+- [ ] **P8** `deployment/nginx/nginx.conf`'s trailing `# ACTIVE` / `# STANDBY`
+      labels **go stale after every switch**. `switch_traffic.sh` flips only the
+      `server` / `# server` prefix, never the trailing comment — so the config
+      currently reads `# server api-blue:8000;  # ACTIVE` (commented out, yet
+      labelled active) while green actually serves. The script's own detection is
+      correct (it greps for an uncommented `server` line), so this is purely a
+      human-readability defect — but a grader opening `nginx.conf` sees a file
+      that contradicts itself. Found 2026-07-19 during 11.5. Fix: extend both
+      `sed` branches to rewrite the trailing label too, or drop the labels and
+      let the comment prefix speak for itself. _Check:_ after a switch, the
+      `ACTIVE` label sits on the uncommented line.
 - [ ] **P6** `/predict` p95 is **3.07 ms** against `/health`'s **0.317 ms** — a
       ~10× tail the p50 analysis does not explain (p50s are 0.763 vs 0.234, so
       the tail is disproportionate, not just a shifted floor). Found 2026-07-19
@@ -1254,3 +1274,121 @@ gets tight, the cut order above is the fallback.
   `Sending build context to Docker daemon` line. Next: **11.4** (screenshots) or
   **11.5** (blue-green prose) — 11.4 needs the stack + a live swap, so it may
   batch with Phase 14.
+- 2026-07-19 — **11.5 done.** §B3 written from the actual scripts rather than
+  generic blue-green prose: the four-step cutover, why the health gate targets
+  the **direct** colour port (probing `:8080` proves only that the *old* version
+  is healthy), gate-before-flip + `set -euo pipefail` ⇒ a bad target yields a
+  failed *deploy*, never an outage, rollback-is-the-same-command (so the rollback
+  path cannot rot from disuse — it *is* the deploy path), and an accurate account
+  of graceful reload including the keep-alive correction (draining workers close
+  idle connections; clients reconnect onto the new colour).
+  Evidence in Table 6 with a screenshot marker for 11.4. **Framing kept from the
+  6.2 lesson:** the per-colour counts (blue 17,809 / green 42,330) are the proof,
+  **not** the error count — a switch firing after the load ends yields a perfect
+  `errors: 0` while nothing moves. Forward-references §B3.1 for the false
+  positives.
+  **New defect found reading `nginx.conf` — logged as P8.** The trailing
+  `# ACTIVE` / `# STANDBY` labels go stale after every switch: `sed` flips only
+  the `server` / `# server` prefix, so the file now reads
+  `# server api-blue:8000;  # ACTIVE` — commented out yet labelled active — while
+  green serves. Script detection is unaffected (it greps for an uncommented
+  line), so it is purely human-readability, but a grader opening the file sees it
+  contradict itself. Wrote §B3's nginx snippet with corrected labels so the
+  report is not reproducing the bug.
+  Next: **11.6** (§B3.1 the `sed -i` inode bug + the `errors: 0` methodology
+  point).
+- 2026-07-19 — **11.6 done. §B3 complete.** Wrote §B3.1 as symptom → mechanism →
+  fix → methodology. **Demonstrated the mechanism live rather than asserting
+  it** — ran `sed -i` on a scratch file and captured the inode changing
+  (**2238265 → 2238266**), then showed `cat > file` preserving it. That console
+  transcript is in the report, so the claim is reproducible by the reader instead
+  of taken on trust.
+  Framing that makes the section work: *every layer behaved correctly in
+  isolation*, which is exactly why it was invisible — host file updated, script
+  completed, nginx reloaded, mount simply pointed elsewhere. Also recorded that
+  recovery needed `--force-recreate nginx`, since the running container's mount
+  still resolved to the orphaned inode.
+  **The methodology paragraph is the most transferable thing in the report:**
+  `errors: 0` is consistent with success, mistimed success, *and* total failure,
+  so it distinguishes nothing; per-colour counts have a signature no failure mode
+  can fake. Generalised to **"verify the effect, not the actuator"** — the
+  script's success message, the reload exit code, and the host file were all the
+  mechanism reporting on itself. Tied it to the two parallel cases already in the
+  report (containers `healthy` proving nothing until a key crossed services §A2;
+  a clean build proving nothing until imports ran inside the image §B2), so it
+  reads as a consistent practice rather than one war story.
+  Next: **11.7** (§B4 Part B implementation links) — then Phase 12
+  (Performance), with 11.4 screenshots still deferred to the Phase 14 session.
+- 2026-07-19 — **11.7 done. PHASE 11 COMPLETE except 11.4 (screenshots).** §B4 is
+  a 15-row index (Table 7) spanning `main.py`, `fraud_detector.py`, the
+  Dockerfile/compose files, and the whole `deployment/` tree. Verified all **8
+  line anchors** land on their declared definitions and all **9 relative paths**
+  resolve from `docs/`. Same permalink marker as §A5; added a specific warning
+  that `main.py` anchors shift if §P4's `response_model` change is kept.
+  **Progress-bar error corrected (user caught it).** I had been advancing the bar
+  one square per completed step, which was accidentally right when the plan had
+  22 steps and one square = one step — but after the 22 → 66 restructure each
+  square represents ~3 steps. The bar read **19/22 (86%)** against a true
+  **14/22 (65%)**. Squares are a *proportion*: `filled = round(done/total*22)`,
+  recomputed from a grep each time, never incremented. Note the drift flattered
+  the work — the direction that most needs guarding. Recorded in the
+  `progress-bar-after-steps` memory. Next: **12.1** (§P1 performance method).
+- 2026-07-19 — **PHASE 12 COMPLETE (12.1–12.4). The headline result is a
+  falsified hypothesis, and it is the strongest section in the report.**
+  **First: every performance figure was re-measured**, because `results.json`
+  predated the P1 retrain and so described code that no longer existed. New
+  canonical baseline (median of 3 × n=5000): **1497 rps · p50 0.50 · p95 1.42 ·
+  p99 3.24 · max 5.47 · 0 errors**; spread 1392–1571 rps, p95 1.27–1.49. The
+  system got *faster* than the old figures (p50 0.77 → 0.50), plausibly the P1
+  warning removal. Re-profiled too: TOTAL **0.1427 ms** (validate 0.0049 ·
+  redis 0.0494 · merge 0.0006 · predict 0.0663 · log 0.0215). Propagated the new
+  numbers through README, `architecture.md`, and report §A1/§A4/§B1 — grep
+  confirms zero stale figures left.
+  **12.4 — the optimization was applied, measured properly, and refuted.**
+  `response_model=None` on `/predict`, container rebuilt per variant, both builds
+  measured with the *same* interleaved paired benchmark (3 × 4000 reqs,
+  `/health` vs `/predict`, comparing the **gap** so machine drift hits both
+  terms):
+  · baseline gap **0.269 ms** · optimized gap **0.297 ms** — no improvement, the
+  optimized build marginally slower, inside run-to-run noise. The harness could
+  not resolve any difference either (1392–1571 vs 1048–1558 rps, overlapping).
+  **Why the original estimate was wrong — the transferable lesson.** The 0.509 ms
+  gap that motivated the whole idea came from a *single* measurement taken hours
+  earlier under different machine load. Re-measuring the baseline immediately
+  alongside the optimized build gave 0.269 ms, and the entire apparent saving
+  vanished with it. **A difference measured across time is not an A/B test.**
+  Same failure shape as §B3.1 — a number consistent with several realities read
+  as evidence for one.
+  **Decision: reverted** (`git diff src/api/main.py` empty; OpenAPI `$ref:
+  FraudPrediction` restored; suite 7/7). With no latency benefit the trade was
+  pure cost — losing `/predict`'s response schema from `/docs` for nothing.
+  §P3 rewritten around stable numbers: /predict 0.552 = floor 0.241 (44%) +
+  app 0.143 (26%) + endpoint-specific framework 0.168 (30%). The residual is
+  *distributed* across body parsing, dependency resolution, validation and
+  serialisation — not concentrated in one removable component, which is exactly
+  why the flag did nothing.
+  Evidence saved: `results.json` (baseline), `docs/evidence/perf-optimized.json`.
+  Next: **13.1** (appendix).
+- 2026-07-19 — **PHASE 13: 13.1 + 13.3 done; 13.2 partial; 13.4 is user-side.**
+  Appendix written as three silent failures + Table 12 (what looked fine vs what
+  actually exposed it), closing on "verify the observable consequence, not the
+  mechanism's self-report" — which ties the appendix back to §B3.1 and §P4.
+  Link audit **clean**: all file links and line anchors resolve, all 9 `§`
+  cross-refs match real headings, re-verified after the rewrite.
+  **13.2 — the report was ~20 pages against an 8-page cap.** User chose the
+  **two-tier** approach targeting **7pp** (wiggle room under "max 8"): the report
+  states decisions and evidence, depth lives in `architecture.md` /
+  `blue_green_design.md`, which it now links from a header note. Rewrote the
+  whole file — **8,338 → 3,657 words, ~54% reduction, est. ~9pp.** Protected the
+  graded and distinctive material (partition evidence, fixture trap, delivery
+  semantics, MGET proof, retrieval latency, 422 + load-once, container details,
+  cutover evidence, B3.1, P3/P4) and cut rationale that `architecture.md`
+  already carries.
+  ⚠️ **Still ~2pp over target, and the estimate is a heuristic** (words/550 +
+  rows/45), not a render. Authoritative check is the user's Word export. If over,
+  cut in this order: link tables → inline lists · Table 3 → prose · A2's "three
+  things follow" → one sentence.
+  13.4 blocked here: **no `pandoc` installed**, and the user is moving to
+  Windows/Word for final formatting anyway.
+  Next: **11.4** (screenshots) + **Phase 14** (screencast) — all remaining work
+  needs the stack recorded live.
