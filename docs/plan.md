@@ -103,12 +103,14 @@ Legend: ✅ done · 🟡 partial/needs fix · ❌ missing
   beats run only 76 s. **RESOLVED (2026-07-19, user directed) → close the gap
   with real content, not dead air.** Grew to **nine** segments: 6 graceful
   degradation, 7 hardening + tests, 8 `/predict_batch` one-MGET proof, 9 hot-path
-  profile. Final **183.7 s (3:04), 796 KB**. Honest accounting of where the
-  length came from: segments 6–9 are genuine runs and supply ~107 s of it;
-  typing speed 30→50 ms added only **~5 s** across all segments (short commands —
-  it barely moves the needle); the last ~9 s came from lengthening title cards
-  2.5 s → 3.5 s, which is presentation, not evidence. Without the card change the
-  video is 2:55. If it ever needs to be shorter, cut card time first.
+  profile. Final **202.2 s (3:22), 824 KB**. Honest accounting of where the
+  length came from: segments 6–9 are genuine runs and supply ~107 s of it
+  (segments alone total 132.8 s); typing speed 30→50 ms added only **~5 s**
+  across all segments — short commands, so don't retry this as a length lever;
+  the remaining ~28 s is presentation — a 5 s title slide plus title cards at
+  5 s each (user's call 2026-07-19, wanted longer read time independent of
+  duration). **Card/title timing is the cheap knob**: it needs no re-recording,
+  so a rebuild cannot disturb `results.json` (see D5 for why that matters).
 
 - **D5 — The report's headline performance figures were not reproducible.**
   Discovered 2026-07-19 while committing: `results.json` disagreed with the
@@ -539,7 +541,7 @@ _Pinned constraints (don't rediscover):_
 - [x] **14.3** Concatenate to `demo.mp4` via `screencast/build_demo.sh` —
       pads each segment onto a common 1500×760 canvas (concat demuxer requires
       identical dimensions) and inserts a generated title card per segment.
-      _Check:_ single file, **183.7 s (3:04) / 796 KB**, decodes clean, all
+      _Check:_ single file, **202.2 s (3:22) / 824 KB**, decodes clean, all
       beats present, inside the 3–5 min expectation. ✅
 - [x] **14.4** Write `screencast/README.md` — nine commentary sections, GIF
       previews + MP4 links, closing "how these were made" note pointing at the
@@ -548,10 +550,14 @@ _Pinned constraints (don't rediscover):_
       15.1 pushes.
 - [x] **14.5** Link `screencast/` from the root README. _Check:_ link resolves
       from the repo root on GitHub — verify after push. ✅
-- [ ] **14.6** Confirm the submission channel — the prompt lists the screencast
-      under submission requirements alongside the Canvas PDF, so the repo copy
-      may not be the graded artifact. **Check this before producing video.**
-      _Check:_ uploaded wherever Canvas expects it.
+- [x] **14.6** Confirm the submission channel. **Finding: the prompt never names
+      one.** It sends the *report* PDF to Canvas but lists "3. Live Demonstration
+      — See above (recorded screencast accepted)" with no destination. Resolved
+      belt-and-braces, since each channel is cheap: (a) in the repo, (b) linked
+      from the root README, (c) pointed to from the report header, (d) attached
+      to Canvas beside the PDF. **Zipping is unnecessary** — `demo.mp4` is
+      **824 KB**, so the earlier 100 MB concern is void; zipping a compressed MP4
+      saves nothing and adds a step for the grader. ✅ User owns (c) and (d).
 
 ### Phase 15 — Ship it
 
@@ -1526,3 +1532,32 @@ gets tight, the cut order above is the fallback.
   works against 13.2's trim target — but the note is load-bearing for honesty, so
   trim elsewhere.
   Next: **13.2** (page trim), **14.6** (Canvas channel), **13.4** (PDF), **15**.
+
+- 2026-07-19 — **Title slide added; card timing raised to 5 s. 3:22 final.**
+  Opening slide reads "Project 2: Real-Time Fraud Detection" / "Matthew Burns" /
+  "July 19, 2026". ⚠️ **User said "Project 3"; the prompt
+  (`docs/project-prompt.md:1`) says "Project 2"** — used Project 2 and flagged
+  it. Implementation note: ffmpeg's filter syntax treats `:` as an argument
+  separator, so the title goes through `textfile=` rather than `text=` to avoid
+  escaping the colon in "Project 2:".
+  **nginx question resolved by the user's own commit** (`d5987f2`): the working
+  tree was already committed with **blue ACTIVE**, which is also what
+  `docs/blue_green_design.md:31` documents as the starting state, and its
+  walkthrough runs blue→green from there. Green-active (the previous committed
+  state) contradicted that doc. **P9 closed.**
+  User has taken over the report (13.2 trim, 13.4 PDF) — do not edit
+  `docs/report.md` further without asking.
+  Next: **14.6** (Canvas channel), then **15**.
+
+- 2026-07-19 — **14.6 closed; Phase 14 complete.** The submission-channel
+  question had no answer in the prompt — it names Canvas for the report PDF only
+  and leaves the screencast's destination unstated — so it's covered from all
+  sides rather than guessed at (see 14.6). Confirmed **Project 2**, not 3: user
+  had mistyped, title slide already said Project 2.
+  Report is the user's from here (13.2 trim, 13.4 PDF, and the screencast
+  pointer line in the header). **Do not edit `docs/report.md`.**
+  ⚠️ Still unverifiable locally: `screencast/README.md`'s GIF previews and MP4
+  links only render truthfully **after a push** — check the GitHub page once
+  15.1 lands. This is the last open check on Phase 14.
+  Remaining on the plan: **13.2**, **13.4**, **15.1**, **15.2** — all user-owned
+  except the commit itself, which the user also owns.

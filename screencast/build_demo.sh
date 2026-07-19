@@ -23,7 +23,14 @@ BG=0x1e1e2e          # Catppuccin Mocha base — matches the recordings
 FG=0xcdd6f4          # Catppuccin Mocha text
 ACCENT=0x89b4fa      # Catppuccin Mocha blue
 FONT=/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
-CARD_SECS=3.5
+CARD_SECS=5
+TITLE_SECS=5
+
+# Opening slide. Text goes through textfile= rather than text= because ffmpeg's
+# filter syntax treats ':' as an argument separator, and the title contains one.
+TITLE_MAIN="Project 2: Real-Time Fraud Detection"
+TITLE_NAME="Matthew Burns"
+TITLE_DATE="July 19, 2026"
 
 # segment file | title | subtitle
 segments=(
@@ -37,6 +44,19 @@ segments=(
   "segment8-batch.mp4|8. Batch scoring|five transactions, one Redis round-trip"
   "segment9-profile.mp4|9. Where the time goes|framework-bound, not compute-bound"
 )
+
+title_slide() {
+  local out="$WORK/title.mp4"
+  printf '%s' "$TITLE_MAIN" > "$WORK/t1.txt"
+  printf '%s' "$TITLE_NAME" > "$WORK/t2.txt"
+  printf '%s' "$TITLE_DATE" > "$WORK/t3.txt"
+  ffmpeg -v error -y -f lavfi -i "color=c=$BG:s=${W}x${H}:d=$TITLE_SECS:r=12" \
+    -vf "drawtext=fontfile=$FONT:textfile=$WORK/t1.txt:fontcolor=$ACCENT:fontsize=48:x=(w-text_w)/2:y=(h/2)-90,\
+drawtext=fontfile=$FONT:textfile=$WORK/t2.txt:fontcolor=$FG:fontsize=32:x=(w-text_w)/2:y=(h/2)+10,\
+drawtext=fontfile=$FONT:textfile=$WORK/t3.txt:fontcolor=$FG:fontsize=26:x=(w-text_w)/2:y=(h/2)+60" \
+    -c:v libx264 -pix_fmt yuv420p -r 12 "$out"
+  echo "file '$out'" >> "$WORK/list.txt"
+}
 
 card() {   # card <index> <title> <subtitle>
   local out="$WORK/card$1.mp4" title="$2" sub="$3"
@@ -54,6 +74,9 @@ pad() {    # pad <index> <segment file>
     -c:v libx264 -pix_fmt yuv420p -r 12 "$out"
   echo "file '$out'" >> "$WORK/list.txt"
 }
+
+echo "building title slide"
+title_slide
 
 i=0
 for entry in "${segments[@]}"; do

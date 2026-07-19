@@ -3,8 +3,8 @@
 A recorded tour of the running system. Everything here is a real run against
 the live stack — no mock output, no edited terminal text.
 
-**Watch the whole thing: [`demo.mp4`](demo.mp4)** (3 min 04 s, 796 KB) — the
-nine segments below, joined with title cards.
+**Watch the whole thing: [`demo.mp4`](demo.mp4)** (3 min 22 s, 824 KB) — a
+title slide, then the nine segments below, each introduced by a title card.
 
 Individual segments are also kept separately, each with a GIF preview that
 renders inline on GitHub and an MP4 for playback.
